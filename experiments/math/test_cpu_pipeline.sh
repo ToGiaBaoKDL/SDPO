@@ -61,7 +61,7 @@ for split, expected_min_rows in [("train", 1), ("val", 1)]:
     print(split, len(rows), "rows ok")
 PY
 
-echo "[4/4] Checking math feedback behavior without math-verify"
+echo "[4/4] Checking math feedback behavior with optional math-verify"
 "${PYTHON_BIN}" - <<'PY'
 import importlib.util
 
@@ -106,12 +106,21 @@ cases = [
     ),
 ]
 
+math_verify_available = None
 for name, prediction, ground_truth, extra_info, expected_score, expected_feedback in cases:
     result = math_feedback.compute_score(prediction, ground_truth, extra_info)
     assert result["score"] == expected_score, (name, result)
     assert result["feedback"] == expected_feedback, (name, result)
-    assert result["math_verify_available"] == 0, (name, result)
+    assert result["math_verify_available"] in (0, 1), (name, result)
+    if math_verify_available is None:
+        math_verify_available = result["math_verify_available"]
+    assert result["math_verify_available"] == math_verify_available, (name, result)
     print(name, "ok")
+
+print("math_verify_available:", math_verify_available)
+if math_verify_available:
+    symbolic = math_feedback.compute_score(r"Reasoning... \boxed{1+1}", "2", {"feedback_mode": "safe"})
+    print("math_verify symbolic smoke:", symbolic["score"], symbolic["pred"])
 PY
 
 echo "CPU pipeline checks passed"
