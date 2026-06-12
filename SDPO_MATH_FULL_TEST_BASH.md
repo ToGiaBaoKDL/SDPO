@@ -94,9 +94,12 @@ with open("verl/trainer/config/sdpo_math_l40s.yaml", encoding="utf-8") as f:
 
 actor_attn = cfg["actor_rollout_ref"]["model"]["override_config"]["attn_implementation"]
 critic_attn = cfg["critic"]["model"]["override_config"]["attn_implementation"]
+agent_workers = cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"]
 print("config_attention:", {"actor": actor_attn, "critic": critic_attn})
+print("config_agent_workers:", agent_workers)
 assert actor_attn == "sdpa", actor_attn
 assert critic_attn == "sdpa", critic_attn
+assert agent_workers == 2, agent_workers
 PY
 
 python - <<'PY'
@@ -112,6 +115,7 @@ script_paths = [
 for path in script_paths:
     text = path.read_text(encoding="utf-8")
     assert 'ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"' in text, path
+    assert 'AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-2}"' in text, path
     forbidden = ["flash_attention_2", "flash-attn", "flash_attn"]
     hits = [term for term in forbidden if term in text]
     if hits:
@@ -358,6 +362,7 @@ python3 -m verl.trainer.main_ppo \
   actor_rollout_ref.actor.ppo_mini_batch_size=2 \
   actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
   actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.rollout.agent.num_workers=2 \
   actor_rollout_ref.rollout.max_model_len=3072 \
   actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
   actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
@@ -410,6 +415,7 @@ python3 -m verl.trainer.main_ppo \
   actor_rollout_ref.actor.ppo_mini_batch_size=2 \
   actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
   actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.rollout.agent.num_workers=2 \
   actor_rollout_ref.rollout.max_model_len=3072 \
   actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
   actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
@@ -443,7 +449,8 @@ for variant in vanilla safe reliability; do
   ray stop --force >/dev/null 2>&1 || true
   bash experiments/math/run_sdpo_math_smoke.sh "$variant" \
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
-    critic.model.override_config.attn_implementation=sdpa
+    critic.model.override_config.attn_implementation=sdpa \
+    actor_rollout_ref.rollout.agent.num_workers=2
 done
 
 ## 11. Target-Model SDPO Smoke Tests
@@ -470,7 +477,8 @@ for variant in vanilla safe reliability; do
   ray stop --force >/dev/null 2>&1 || true
   bash experiments/math/run_sdpo_math_smoke.sh "$variant" \
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
-    critic.model.override_config.attn_implementation=sdpa
+    critic.model.override_config.attn_implementation=sdpa \
+    actor_rollout_ref.rollout.agent.num_workers=2
 done
 
 ## 12. SDPO And SDPO+ Short Train
@@ -513,6 +521,7 @@ do
     actor_rollout_ref.actor.ppo_mini_batch_size=2 \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
     actor_rollout_ref.rollout.n=2 \
+    actor_rollout_ref.rollout.agent.num_workers=2 \
     actor_rollout_ref.rollout.max_model_len=3072 \
     actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
@@ -566,6 +575,7 @@ python3 -m verl.trainer.main_ppo \
   actor_rollout_ref.actor.ppo_mini_batch_size=2 \
   actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
   actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.rollout.agent.num_workers=2 \
   actor_rollout_ref.rollout.max_model_len=3072 \
   actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
   actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
@@ -592,6 +602,7 @@ do
     actor_rollout_ref.actor.ppo_mini_batch_size=2 \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
     actor_rollout_ref.rollout.n=2 \
+    actor_rollout_ref.rollout.agent.num_workers=2 \
     actor_rollout_ref.rollout.max_model_len=3072 \
     actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
@@ -636,5 +647,6 @@ bash experiments/math/run_sdpo_math_smoke.sh reliability \
   rollout_model_len=2560 \
   actor_max_token_len=2560 \
   actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.rollout.agent.num_workers=2 \
   actor_rollout_ref.actor.self_distillation.max_reprompt_len=1792 \
   actor_rollout_ref.rollout.gpu_memory_utilization=0.45

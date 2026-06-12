@@ -34,6 +34,7 @@ CONFIG_NAME="${CONFIG_NAME:-sdpo_math_l40s}"
 MODEL_PATH="${MODEL_PATH:-Qwen/Qwen3.5-9B}"
 LOGGER="${LOGGER:-[\"console\"]}"
 ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"
+AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-2}"
 
 if [[ ! -f "${PROJECT_ROOT}/data/dapo_math_en/train.parquet" ]]; then
   echo "Missing data/dapo_math_en/train.parquet. Run Stage 1/2 preprocessing first." >&2
@@ -46,6 +47,7 @@ python3 -m verl.trainer.main_ppo \
   actor_rollout_ref.model.override_config.attn_implementation="${ATTN_IMPLEMENTATION}" \
   critic.model.path="${MODEL_PATH}" \
   critic.model.override_config.attn_implementation="${ATTN_IMPLEMENTATION}" \
+  actor_rollout_ref.rollout.agent.num_workers="${AGENT_NUM_WORKERS}" \
   trainer.experiment_name="${EXP_NAME}" \
   trainer.group_name="SDPO-Math-Smoke" \
   trainer.logger="${LOGGER}" \

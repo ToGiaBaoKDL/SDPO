@@ -13,6 +13,7 @@ VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:--1}"
 TOTAL_TRAINING_STEPS="${TOTAL_TRAINING_STEPS:-null}"
 LOGGER="${LOGGER:-[\"console\"]}"
 ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"
+AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-2}"
 
 if [[ ! -f "${PROJECT_ROOT}/data/dapo_math_en/train.parquet" ]]; then
   echo "Missing data/dapo_math_en/train.parquet. Run Stage 1/2 preprocessing first." >&2
@@ -25,6 +26,7 @@ python3 -m verl.trainer.main_ppo \
   actor_rollout_ref.model.override_config.attn_implementation="${ATTN_IMPLEMENTATION}" \
   critic.model.path="${MODEL_PATH}" \
   critic.model.override_config.attn_implementation="${ATTN_IMPLEMENTATION}" \
+  actor_rollout_ref.rollout.agent.num_workers="${AGENT_NUM_WORKERS}" \
   trainer.experiment_name="${EXP_NAME}" \
   trainer.group_name="SDPO-Math-Vanilla" \
   trainer.logger="${LOGGER}" \

@@ -99,6 +99,8 @@ actor_rollout_ref:
     log_prob_max_token_len_per_gpu: ${rollout_model_len}
     max_num_batched_tokens: ${rollout_model_len}
     max_model_len: ${rollout_model_len}
+    agent:
+      num_workers: 2
     val_kwargs:
       n: 4
       temperature: 0.6
