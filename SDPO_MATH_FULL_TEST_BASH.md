@@ -14,7 +14,8 @@ training pipeline.
 
 The default path uses `attn_implementation=sdpa` so setup is fast and stable on L4/A10.
 Do not build FlashAttention for this test run. FlashAttention is an optional speed
-optimization, not required for SDPO correctness.
+optimization, not required for SDPO correctness. This no-FlashAttention profile also
+uses `use_remove_padding=False`, because remove-padding imports `flash_attn.bert_padding`.
 
 Copy each section into one notebook code cell. Use `%%bash` exactly, no space.
 
@@ -95,11 +96,14 @@ with open("verl/trainer/config/sdpo_math_l40s.yaml", encoding="utf-8") as f:
 actor_attn = cfg["actor_rollout_ref"]["model"]["override_config"]["attn_implementation"]
 critic_attn = cfg["critic"]["model"]["override_config"]["attn_implementation"]
 agent_workers = cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"]
+use_remove_padding = cfg["actor_rollout_ref"]["model"]["use_remove_padding"]
 print("config_attention:", {"actor": actor_attn, "critic": critic_attn})
 print("config_agent_workers:", agent_workers)
+print("config_use_remove_padding:", use_remove_padding)
 assert actor_attn == "sdpa", actor_attn
 assert critic_attn == "sdpa", critic_attn
 assert agent_workers == 2, agent_workers
+assert use_remove_padding is False, use_remove_padding
 PY
 
 python - <<'PY'
@@ -116,6 +120,7 @@ for path in script_paths:
     text = path.read_text(encoding="utf-8")
     assert 'ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"' in text, path
     assert 'AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-2}"' in text, path
+    assert 'USE_REMOVE_PADDING="${USE_REMOVE_PADDING:-False}"' in text, path
     forbidden = ["flash_attention_2", "flash-attn", "flash_attn"]
     hits = [term for term in forbidden if term in text]
     if hits:
@@ -142,9 +147,9 @@ if worker_text.count('override_config.get("attn_implementation", "sdpa")') < 2:
 
 for path in [Path("verl/workers/config/model.py"), Path("verl/workers/fsdp_workers.py")]:
     text = path.read_text(encoding="utf-8")
-    for needle in ['get("attn_implementation", "flash_attention_2")', "flash-attn", "flash_attn"]:
-        if needle in text:
-            raise SystemExit(f"Unexpected FlashAttention default/install reference in {path}: {needle}")
+    needle = 'get("attn_implementation", "flash_attention_2")'
+    if needle in text:
+        raise SystemExit(f"Unexpected FlashAttention default in {path}: {needle}")
 PY
 
 echo "attention_preflight_ok"
@@ -340,8 +345,10 @@ ray stop --force >/dev/null 2>&1 || true
 python3 -m verl.trainer.main_ppo \
   --config-name sdpo_math_l40s \
   actor_rollout_ref.model.path="$MODEL_PATH" \
+  actor_rollout_ref.model.use_remove_padding=False \
   actor_rollout_ref.model.override_config.attn_implementation=sdpa \
   critic.model.path="$MODEL_PATH" \
+  critic.model.use_remove_padding=False \
   critic.model.override_config.attn_implementation=sdpa \
   trainer.experiment_name=base_model_val_smoke \
   trainer.group_name=SDPO-Math-Base-Val \
@@ -396,8 +403,10 @@ ray stop --force >/dev/null 2>&1 || true
 python3 -m verl.trainer.main_ppo \
   --config-name sdpo_math_l40s \
   actor_rollout_ref.model.path="$MODEL_PATH" \
+  actor_rollout_ref.model.use_remove_padding=False \
   actor_rollout_ref.model.override_config.attn_implementation=sdpa \
   critic.model.path="$MODEL_PATH" \
+  critic.model.use_remove_padding=False \
   critic.model.override_config.attn_implementation=sdpa \
   trainer.experiment_name=base_rl_5step \
   trainer.group_name=SDPO-Math-Base-RL \
@@ -448,7 +457,9 @@ for variant in vanilla safe reliability; do
   echo "-- smoke_variant=$variant"
   ray stop --force >/dev/null 2>&1 || true
   bash experiments/math/run_sdpo_math_smoke.sh "$variant" \
+    actor_rollout_ref.model.use_remove_padding=False \
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+    critic.model.use_remove_padding=False \
     critic.model.override_config.attn_implementation=sdpa \
     actor_rollout_ref.rollout.agent.num_workers=2
 done
@@ -476,7 +487,9 @@ for variant in vanilla safe reliability; do
   echo "-- target_smoke_variant=$variant"
   ray stop --force >/dev/null 2>&1 || true
   bash experiments/math/run_sdpo_math_smoke.sh "$variant" \
+    actor_rollout_ref.model.use_remove_padding=False \
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+    critic.model.use_remove_padding=False \
     critic.model.override_config.attn_implementation=sdpa \
     actor_rollout_ref.rollout.agent.num_workers=2
 done
@@ -512,7 +525,9 @@ do
   echo "-- train_script=$script"
   ray stop --force >/dev/null 2>&1 || true
   bash "$script" \
+    actor_rollout_ref.model.use_remove_padding=False \
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+    critic.model.use_remove_padding=False \
     critic.model.override_config.attn_implementation=sdpa \
     data.train_batch_size=2 \
     data.max_response_length=1024 \
@@ -559,8 +574,10 @@ ray stop --force >/dev/null 2>&1 || true
 python3 -m verl.trainer.main_ppo \
   --config-name sdpo_math_l40s \
   actor_rollout_ref.model.path="$MODEL_PATH" \
+  actor_rollout_ref.model.use_remove_padding=False \
   actor_rollout_ref.model.override_config.attn_implementation=sdpa \
   critic.model.path="$MODEL_PATH" \
+  critic.model.use_remove_padding=False \
   critic.model.override_config.attn_implementation=sdpa \
   trainer.experiment_name=base_rl_full \
   trainer.group_name=SDPO-Math-Base-RL \
@@ -593,7 +610,9 @@ do
   echo "-- full_train_script=$script"
   ray stop --force >/dev/null 2>&1 || true
   bash "$script" \
+    actor_rollout_ref.model.use_remove_padding=False \
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+    critic.model.use_remove_padding=False \
     critic.model.override_config.attn_implementation=sdpa \
     data.train_batch_size=2 \
     data.max_response_length=1024 \
@@ -641,7 +660,9 @@ export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
 
 ray stop --force >/dev/null 2>&1 || true
 bash experiments/math/run_sdpo_math_smoke.sh reliability \
+  actor_rollout_ref.model.use_remove_padding=False \
   actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+  critic.model.use_remove_padding=False \
   critic.model.override_config.attn_implementation=sdpa \
   data.max_response_length=768 \
   rollout_model_len=2560 \

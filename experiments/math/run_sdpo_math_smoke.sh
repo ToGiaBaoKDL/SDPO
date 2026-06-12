@@ -35,6 +35,7 @@ MODEL_PATH="${MODEL_PATH:-Qwen/Qwen3.5-9B}"
 LOGGER="${LOGGER:-[\"console\"]}"
 ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"
 AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-2}"
+USE_REMOVE_PADDING="${USE_REMOVE_PADDING:-False}"
 
 if [[ ! -f "${PROJECT_ROOT}/data/dapo_math_en/train.parquet" ]]; then
   echo "Missing data/dapo_math_en/train.parquet. Run Stage 1/2 preprocessing first." >&2
@@ -44,8 +45,10 @@ fi
 python3 -m verl.trainer.main_ppo \
   --config-name "${CONFIG_NAME}" \
   actor_rollout_ref.model.path="${MODEL_PATH}" \
+  actor_rollout_ref.model.use_remove_padding="${USE_REMOVE_PADDING}" \
   actor_rollout_ref.model.override_config.attn_implementation="${ATTN_IMPLEMENTATION}" \
   critic.model.path="${MODEL_PATH}" \
+  critic.model.use_remove_padding="${USE_REMOVE_PADDING}" \
   critic.model.override_config.attn_implementation="${ATTN_IMPLEMENTATION}" \
   actor_rollout_ref.rollout.agent.num_workers="${AGENT_NUM_WORKERS}" \
   trainer.experiment_name="${EXP_NAME}" \

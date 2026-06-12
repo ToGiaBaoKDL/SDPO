@@ -39,7 +39,7 @@ actor_rollout_ref:
     trust_remote_code: True
     override_config:
       attn_implementation: sdpa
-    use_remove_padding: True
+    use_remove_padding: False
     enable_gradient_checkpointing: True
     lora_rank: 32
     lora_alpha: 32
