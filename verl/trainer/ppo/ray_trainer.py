@@ -633,12 +633,24 @@ class RayPPOTrainer:
                     feedback_list[i] = raw_feedback[i]
         return feedback_list
 
-    def _collect_solutions_by_uid(self, batch: DataProto, reward_tensor: torch.Tensor, success_reward_threshold: float) -> dict[Any, list[int]]:
+    def _collect_solutions_by_uid(
+        self,
+        batch: DataProto,
+        reward_tensor: torch.Tensor,
+        success_reward_threshold: float,
+        reward_extra_infos_dict: Optional[dict[str, list]] = None,
+    ) -> dict[Any, list[int]]:
         seq_scores = reward_tensor.sum(dim=-1).detach().cpu().numpy()
         uids = batch.non_tensor_batch["uid"]
         success_by_uid: dict[Any, list[int]] = defaultdict(list)
         for idx, uid in enumerate(uids):
-            if seq_scores[idx] >= success_reward_threshold:
+            is_truncated = self._truthy_reward_extra(
+                self._reward_extra_at(reward_extra_infos_dict, "truncated", idx, False)
+            )
+            incorrect_format = self._truthy_reward_extra(
+                self._reward_extra_at(reward_extra_infos_dict, "incorrect_format", idx, False)
+            )
+            if seq_scores[idx] >= success_reward_threshold and not is_truncated and not incorrect_format:
                 success_by_uid[uid].append(idx)
         return success_by_uid
 
@@ -668,6 +680,85 @@ class RayPPOTrainer:
             solution_str = self._remove_thinking_trace(solution_str)
         return solution_str
 
+    @staticmethod
+    def _truthy_reward_extra(value: Any) -> bool:
+        if isinstance(value, torch.Tensor):
+            return bool(value.item())
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes"}
+        return bool(value)
+
+    @staticmethod
+    def _reward_extra_at(
+        reward_extra_infos_dict: Optional[dict[str, list]],
+        key: str,
+        idx: int,
+        default: Any = None,
+    ) -> Any:
+        if reward_extra_infos_dict is None:
+            return default
+        values = reward_extra_infos_dict.get(key)
+        if values is None or idx >= len(values):
+            return default
+        return values[idx]
+
+    def _compute_self_distillation_weights(
+        self,
+        self_distillation_cfg,
+        solution_strs: list[Optional[str]],
+        feedback_used: list[bool],
+        reward_extra_infos_dict: Optional[dict[str, list]],
+        device: torch.device,
+    ) -> tuple[torch.Tensor, dict[str, float]]:
+        weights: list[float] = []
+        success_count = 0
+        safe_feedback_count = 0
+        format_feedback_count = 0
+        truncated_count = 0
+
+        for i, solution_str in enumerate(solution_strs):
+            has_solution = solution_str is not None
+            has_feedback = feedback_used[i]
+            is_truncated = self._truthy_reward_extra(
+                self._reward_extra_at(reward_extra_infos_dict, "truncated", i, False)
+            )
+            incorrect_format = self._truthy_reward_extra(
+                self._reward_extra_at(reward_extra_infos_dict, "incorrect_format", i, False)
+            )
+
+            if is_truncated:
+                weight = float(self_distillation_cfg.get("reliability_truncated_weight", 0.0))
+                if has_solution or has_feedback:
+                    truncated_count += 1
+            elif has_solution:
+                weight = float(self_distillation_cfg.get("reliability_success_weight", 1.0))
+                success_count += 1
+            elif has_feedback and incorrect_format:
+                weight = float(self_distillation_cfg.get("reliability_format_feedback_weight", 0.2))
+                format_feedback_count += 1
+            elif has_feedback:
+                weight = float(self_distillation_cfg.get("reliability_safe_feedback_weight", 0.4))
+                safe_feedback_count += 1
+            else:
+                weight = 0.0
+
+            if weight > 0:
+                weight = max(weight, float(self_distillation_cfg.get("reliability_min_weight", 0.0)))
+            weights.append(weight)
+
+        weight_tensor = torch.tensor(weights, dtype=torch.float32, device=device)
+        nonzero = weight_tensor > 0
+        batch_size = max(len(weights), 1)
+        metrics = {
+            "self_distillation/reliability_weight_mean": weight_tensor.mean().item() if len(weights) > 0 else 0.0,
+            "self_distillation/reliability_weight_nonzero_fraction": nonzero.float().mean().item() if len(weights) > 0 else 0.0,
+            "self_distillation/reliability_success_weight_fraction": success_count / batch_size,
+            "self_distillation/reliability_safe_feedback_weight_fraction": safe_feedback_count / batch_size,
+            "self_distillation/reliability_format_feedback_weight_fraction": format_feedback_count / batch_size,
+            "self_distillation/reliability_truncated_weight_fraction": truncated_count / batch_size,
+        }
+        return weight_tensor, metrics
+
 
     def _maybe_build_self_distillation_batch(
         self,
@@ -694,7 +785,12 @@ class RayPPOTrainer:
             batch_size=batch_size,
         )
 
-        success_by_uid = self._collect_solutions_by_uid(batch, reward_tensor, success_reward_threshold=self_distillation_cfg.success_reward_threshold)
+        success_by_uid = self._collect_solutions_by_uid(
+            batch,
+            reward_tensor,
+            success_reward_threshold=self_distillation_cfg.success_reward_threshold,
+            reward_extra_infos_dict=reward_extra_infos_dict,
+        )
         solution_strs = [
             self._get_solution(
                 i,
@@ -777,6 +873,13 @@ class RayPPOTrainer:
             device=device
         )
 
+        tensors = {
+            "teacher_input_ids": teacher_input_ids,
+            "teacher_attention_mask": teacher_attention_mask,
+            "teacher_position_ids": teacher_position_ids,
+            "self_distillation_mask": self_distillation_mask,
+        }
+
         uids = set(batch.non_tensor_batch["uid"])
         num_with_feedback_available = sum(1 for f in feedback_list if f is not None)
         num_with_feedback_used = sum(1 for f in feedback_used if f)
@@ -788,12 +891,18 @@ class RayPPOTrainer:
             "self_distillation/feedback_used_fraction": num_with_feedback_used / batch_size,
             "self_distillation/reprompt_sample_fraction": self_distillation_mask.float().mean().item(),
         }
-        return DataProto.from_dict(tensors={
-            "teacher_input_ids": teacher_input_ids,
-            "teacher_attention_mask": teacher_attention_mask,
-            "teacher_position_ids": teacher_position_ids,
-            "self_distillation_mask": self_distillation_mask,
-        }), metrics
+        if self_distillation_cfg.get("reliability_weighting", False):
+            reliability_weight, reliability_metrics = self._compute_self_distillation_weights(
+                self_distillation_cfg=self_distillation_cfg,
+                solution_strs=solution_strs,
+                feedback_used=feedback_used,
+                reward_extra_infos_dict=reward_extra_infos_dict,
+                device=device,
+            )
+            tensors["self_distillation_weight"] = reliability_weight
+            metrics.update(reliability_metrics)
+
+        return DataProto.from_dict(tensors=tensors), metrics
 
     def _get_gen_batch(self, batch: DataProto) -> DataProto:
         reward_model_keys = set({"data_source", "reward_model", "extra_info", "uid", "raw_prompt"}) & batch.non_tensor_batch.keys()

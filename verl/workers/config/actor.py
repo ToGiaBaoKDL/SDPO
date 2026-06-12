@@ -58,6 +58,12 @@ class SelfDistillationConfig(BaseConfig):
         feedback_template (str): Template for formatting feedback section. Uses {feedback_raw} placeholder.
         include_environment_feedback (bool): Whether to include environment feedback in reprompting for wrong attempts.
         environment_feedback_only_without_solution (bool): If True, only use feedback when no solution is available (ignore feedback when solution exists).
+        reliability_weighting (bool): Whether to weight SDPO targets by heuristic target reliability.
+        reliability_min_weight (float): Lower bound for positive reliability weights.
+        reliability_success_weight (float): Weight for samples with a successful peer demonstration.
+        reliability_safe_feedback_weight (float): Weight for non-format safe feedback targets.
+        reliability_format_feedback_weight (float): Weight for format-only feedback targets.
+        reliability_truncated_weight (float): Weight for truncated targets.
         reprompt_template_feedback (str): Template for reprompting with feedback but no solution.
         reprompt_template_feedback_solution (str): Template for reprompting with both feedback and solution.
     """
@@ -90,6 +96,12 @@ class SelfDistillationConfig(BaseConfig):
     )
     include_environment_feedback: bool = False
     environment_feedback_only_without_solution: bool = False
+    reliability_weighting: bool = False
+    reliability_min_weight: float = 0.0
+    reliability_success_weight: float = 1.0
+    reliability_safe_feedback_weight: float = 0.4
+    reliability_format_feedback_weight: float = 0.2
+    reliability_truncated_weight: float = 0.0
 
     def __post_init__(self):
         if not 0.0 <= self.alpha <= 1.0:
@@ -110,6 +122,16 @@ class SelfDistillationConfig(BaseConfig):
             )
         if self.is_clip is not None and self.is_clip <= 0:
             raise ValueError(f"self_distillation.is_clip must be positive, got {self.is_clip}")
+        reliability_fields = {
+            "reliability_min_weight": self.reliability_min_weight,
+            "reliability_success_weight": self.reliability_success_weight,
+            "reliability_safe_feedback_weight": self.reliability_safe_feedback_weight,
+            "reliability_format_feedback_weight": self.reliability_format_feedback_weight,
+            "reliability_truncated_weight": self.reliability_truncated_weight,
+        }
+        for field_name, value in reliability_fields.items():
+            if value < 0:
+                raise ValueError(f"self_distillation.{field_name} must be non-negative, got {value}")
 
 
 @dataclass

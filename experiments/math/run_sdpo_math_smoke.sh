@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH:-}"
+
+VARIANT="${1:-vanilla}"
+shift || true
+
+case "${VARIANT}" in
+  vanilla)
+    INCLUDE_FEEDBACK=False
+    RELIABILITY_WEIGHTING=False
+    EXP_NAME="${EXP_NAME:-sdpo_math_smoke_vanilla}"
+    ;;
+  safe)
+    INCLUDE_FEEDBACK=True
+    RELIABILITY_WEIGHTING=False
+    EXP_NAME="${EXP_NAME:-sdpo_math_smoke_safe_feedback}"
+    ;;
+  reliability)
+    INCLUDE_FEEDBACK=True
+    RELIABILITY_WEIGHTING=True
+    EXP_NAME="${EXP_NAME:-sdpo_math_smoke_reliability}"
+    ;;
+  *)
+    echo "Usage: $0 [vanilla|safe|reliability] [hydra overrides...]" >&2
+    exit 1
+    ;;
+esac
+
+CONFIG_NAME="${CONFIG_NAME:-sdpo_math_l40s}"
+MODEL_PATH="${MODEL_PATH:-Qwen/Qwen3.5-9B}"
+LOGGER="${LOGGER:-[\"console\"]}"
+
+if [[ ! -f "${PROJECT_ROOT}/data/dapo_math_en/train.parquet" ]]; then
+  echo "Missing data/dapo_math_en/train.parquet. Run Stage 1/2 preprocessing first." >&2
+  exit 1
+fi
+
+python3 -m verl.trainer.main_ppo \
+  --config-name "${CONFIG_NAME}" \
+  actor_rollout_ref.model.path="${MODEL_PATH}" \
+  critic.model.path="${MODEL_PATH}" \
+  trainer.experiment_name="${EXP_NAME}" \
+  trainer.group_name="SDPO-Math-Smoke" \
+  trainer.logger="${LOGGER}" \
+  trainer.total_training_steps=1 \
+  trainer.val_before_train=False \
+  trainer.test_freq=1 \
+  trainer.save_freq=-1 \
+  data.train_max_samples=8 \
+  data.val_max_samples=8 \
+  data.train_batch_size=2 \
+  data.max_response_length=1024 \
+  rollout_model_len=3072 \
+  actor_max_token_len=3072 \
+  actor_rollout_ref.actor.ppo_mini_batch_size=2 \
+  actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.rollout.max_model_len=3072 \
+  actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
+  actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.actor.self_distillation.max_reprompt_len=2048 \
+  actor_rollout_ref.actor.self_distillation.include_environment_feedback="${INCLUDE_FEEDBACK}" \
+  actor_rollout_ref.actor.self_distillation.reliability_weighting="${RELIABILITY_WEIGHTING}" \
+  "$@"
