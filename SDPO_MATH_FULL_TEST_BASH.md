@@ -77,6 +77,40 @@ for name in required:
 print("deps_ok:", ", ".join(required))
 PY
 
+## 2.1 Attention Preflight
+
+%%bash
+set -euo pipefail
+
+echo "== 2.1 Attention preflight =="
+cd /root/SDPO
+source .venv/bin/activate
+
+python - <<'PY'
+import yaml
+
+with open("verl/trainer/config/sdpo_math_l40s.yaml", encoding="utf-8") as f:
+    cfg = yaml.safe_load(f)
+
+actor_attn = cfg["actor_rollout_ref"]["model"]["override_config"]["attn_implementation"]
+critic_attn = cfg["critic"]["model"]["override_config"]["attn_implementation"]
+print("config_attention:", {"actor": actor_attn, "critic": critic_attn})
+assert actor_attn == "sdpa", actor_attn
+assert critic_attn == "sdpa", critic_attn
+PY
+
+if rg -n "flash_attention_2|flash-attn|flash_attn" \
+  verl/trainer/config/sdpo_math_l40s.yaml \
+  experiments/math/run_sdpo_math_smoke.sh \
+  experiments/math/run_sdpo_math_vanilla.sh \
+  experiments/math/run_sdpo_math_safe_feedback.sh \
+  experiments/math/run_sdpo_math_reliability.sh; then
+  echo "Unexpected FlashAttention reference in runnable config/script." >&2
+  exit 1
+fi
+
+echo "attention_preflight_ok"
+
 ## 3. Runtime And Model Sanity
 
 %%bash

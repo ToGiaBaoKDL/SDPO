@@ -33,6 +33,7 @@ esac
 CONFIG_NAME="${CONFIG_NAME:-sdpo_math_l40s}"
 MODEL_PATH="${MODEL_PATH:-Qwen/Qwen3.5-9B}"
 LOGGER="${LOGGER:-[\"console\"]}"
+ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"
 
 if [[ ! -f "${PROJECT_ROOT}/data/dapo_math_en/train.parquet" ]]; then
   echo "Missing data/dapo_math_en/train.parquet. Run Stage 1/2 preprocessing first." >&2
@@ -42,7 +43,9 @@ fi
 python3 -m verl.trainer.main_ppo \
   --config-name "${CONFIG_NAME}" \
   actor_rollout_ref.model.path="${MODEL_PATH}" \
+  actor_rollout_ref.model.override_config.attn_implementation="${ATTN_IMPLEMENTATION}" \
   critic.model.path="${MODEL_PATH}" \
+  critic.model.override_config.attn_implementation="${ATTN_IMPLEMENTATION}" \
   trainer.experiment_name="${EXP_NAME}" \
   trainer.group_name="SDPO-Math-Smoke" \
   trainer.logger="${LOGGER}" \
