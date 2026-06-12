@@ -18,6 +18,9 @@ optimization, not required for SDPO correctness. This no-FlashAttention profile 
 uses `use_remove_padding=False`, because remove-padding imports `flash_attn.bert_padding`.
 
 Copy each section into one notebook code cell. Use `%%bash` exactly, no space.
+The cells source `experiments/math/common_quiet_env.sh` for low-noise defaults.
+Quiet mode keeps `RAY_DEDUP_LOGS=1`; `RAY_DEDUP_LOGS=0` disables Ray
+deduplication and is useful only when you want raw repeated worker logs for debugging.
 
 ## 0. Setup
 
@@ -26,6 +29,7 @@ set -euo pipefail
 
 echo "== 0. Setup =="
 cd /root/SDPO
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -53,6 +57,7 @@ cd /root/SDPO
 python3 -m pip install -q -U uv
 uv venv .venv --python 3.10
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 python --version
 which python
@@ -65,6 +70,7 @@ set -euo pipefail
 echo "== 2. Dependencies =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 uv pip install -q -U pip
 uv pip install -q pyyaml pyarrow pandas datasets
@@ -86,6 +92,7 @@ set -euo pipefail
 echo "== 2.1 Attention preflight =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 python - <<'PY'
 import yaml
@@ -97,13 +104,18 @@ actor_attn = cfg["actor_rollout_ref"]["model"]["override_config"]["attn_implemen
 critic_attn = cfg["critic"]["model"]["override_config"]["attn_implementation"]
 agent_workers = cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"]
 use_remove_padding = cfg["actor_rollout_ref"]["model"]["use_remove_padding"]
+dataloader_workers = cfg["data"]["dataloader_num_workers"]
+filter_workers = cfg["data"]["filter_overlong_prompts_workers"]
 print("config_attention:", {"actor": actor_attn, "critic": critic_attn})
 print("config_agent_workers:", agent_workers)
 print("config_use_remove_padding:", use_remove_padding)
+print("config_data_workers:", {"dataloader": dataloader_workers, "filter": filter_workers})
 assert actor_attn == "sdpa", actor_attn
 assert critic_attn == "sdpa", critic_attn
 assert agent_workers == 2, agent_workers
 assert use_remove_padding is False, use_remove_padding
+assert dataloader_workers == 0, dataloader_workers
+assert filter_workers == 1, filter_workers
 PY
 
 python - <<'PY'
@@ -118,9 +130,12 @@ script_paths = [
 
 for path in script_paths:
     text = path.read_text(encoding="utf-8")
+    assert 'source "${SCRIPT_DIR}/common_quiet_env.sh"' in text, path
     assert 'ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"' in text, path
     assert 'AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-2}"' in text, path
     assert 'USE_REMOVE_PADDING="${USE_REMOVE_PADDING:-False}"' in text, path
+    assert 'DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-0}"' in text, path
+    assert 'FILTER_OVERLONG_PROMPTS_WORKERS="${FILTER_OVERLONG_PROMPTS_WORKERS:-1}"' in text, path
     forbidden = ["flash_attention_2", "flash-attn", "flash_attn"]
     hits = [term for term in forbidden if term in text]
     if hits:
@@ -130,6 +145,11 @@ config_text = Path("verl/trainer/config/sdpo_math_l40s.yaml").read_text(encoding
 for term in ["flash_attention_2", "flash-attn", "flash_attn"]:
     if term in config_text:
         raise SystemExit(f"Unexpected FlashAttention reference in config: {term}")
+
+quiet_text = Path("experiments/math/common_quiet_env.sh").read_text(encoding="utf-8")
+assert 'RAY_DEDUP_LOGS="${RAY_DEDUP_LOGS:-1}"' in quiet_text
+assert 'VLLM_LOGGING_LEVEL="${VLLM_LOGGING_LEVEL:-ERROR}"' in quiet_text
+assert 'TRANSFORMERS_VERBOSITY="${TRANSFORMERS_VERBOSITY:-error}"' in quiet_text
 
 model_text = Path("verl/workers/config/model.py").read_text(encoding="utf-8")
 assert 'self.override_config.get("attn_implementation", "sdpa")' in model_text
@@ -162,6 +182,7 @@ set -euo pipefail
 echo "== 3. Runtime/model sanity =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
 export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
@@ -201,6 +222,7 @@ set -euo pipefail
 echo "== 4. math-verify reward smoke =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 python - <<'PY'
 import importlib.util
@@ -233,6 +255,7 @@ set -euo pipefail
 echo "== 5. Create DAPO-Math data =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -267,6 +290,7 @@ set -euo pipefail
 echo "== 6. CPU/data pipeline check =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 PYTHON=.venv/bin/python bash experiments/math/test_cpu_pipeline.sh
 
@@ -307,6 +331,7 @@ set -euo pipefail
 echo "== 7. Common model exports =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -330,6 +355,7 @@ set -euo pipefail
 echo "== 8. Base model validation smoke =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -356,6 +382,8 @@ python3 -m verl.trainer.main_ppo \
   trainer.val_before_train=True \
   trainer.val_only=True \
   trainer.save_freq=-1 \
+  data.dataloader_num_workers=0 \
+  data.filter_overlong_prompts_workers=1 \
   data.train_max_samples=8 \
   data.val_max_samples=8 \
   data.train_batch_size=2 \
@@ -388,6 +416,7 @@ set -euo pipefail
 echo "== 9. Base RL short train =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -415,6 +444,8 @@ python3 -m verl.trainer.main_ppo \
   trainer.val_before_train=False \
   trainer.test_freq=5 \
   trainer.save_freq=-1 \
+  data.dataloader_num_workers=0 \
+  data.filter_overlong_prompts_workers=1 \
   data.train_max_samples=128 \
   data.val_max_samples=64 \
   data.train_batch_size=2 \
@@ -442,6 +473,7 @@ set -euo pipefail
 echo "== 10. SDPO smoke tests =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -461,7 +493,9 @@ for variant in vanilla safe reliability; do
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
     critic.model.use_remove_padding=False \
     critic.model.override_config.attn_implementation=sdpa \
-    actor_rollout_ref.rollout.agent.num_workers=2
+    actor_rollout_ref.rollout.agent.num_workers=2 \
+    data.dataloader_num_workers=0 \
+    data.filter_overlong_prompts_workers=1
 done
 
 ## 11. Target-Model SDPO Smoke Tests
@@ -472,6 +506,7 @@ set -euo pipefail
 echo "== 11. Target-model SDPO smoke tests =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -491,7 +526,9 @@ for variant in vanilla safe reliability; do
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
     critic.model.use_remove_padding=False \
     critic.model.override_config.attn_implementation=sdpa \
-    actor_rollout_ref.rollout.agent.num_workers=2
+    actor_rollout_ref.rollout.agent.num_workers=2 \
+    data.dataloader_num_workers=0 \
+    data.filter_overlong_prompts_workers=1
 done
 
 ## 12. SDPO And SDPO+ Short Train
@@ -502,6 +539,7 @@ set -euo pipefail
 echo "== 12. SDPO/SDPO+ short train =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -529,6 +567,8 @@ do
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
     critic.model.use_remove_padding=False \
     critic.model.override_config.attn_implementation=sdpa \
+    data.dataloader_num_workers=0 \
+    data.filter_overlong_prompts_workers=1 \
     data.train_batch_size=2 \
     data.max_response_length=1024 \
     rollout_model_len=3072 \
@@ -554,6 +594,7 @@ set -euo pipefail
 echo "== 13. Full training =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -585,6 +626,8 @@ python3 -m verl.trainer.main_ppo \
   trainer.total_training_steps="$TOTAL_TRAINING_STEPS" \
   data.train_max_samples="$TRAIN_MAX_SAMPLES" \
   data.val_max_samples="$VAL_MAX_SAMPLES" \
+  data.dataloader_num_workers=0 \
+  data.filter_overlong_prompts_workers=1 \
   data.train_batch_size=2 \
   data.max_response_length=1024 \
   rollout_model_len=3072 \
@@ -614,6 +657,8 @@ do
     actor_rollout_ref.model.override_config.attn_implementation=sdpa \
     critic.model.use_remove_padding=False \
     critic.model.override_config.attn_implementation=sdpa \
+    data.dataloader_num_workers=0 \
+    data.filter_overlong_prompts_workers=1 \
     data.train_batch_size=2 \
     data.max_response_length=1024 \
     rollout_model_len=3072 \
@@ -649,6 +694,7 @@ set -euo pipefail
 echo "== 15. OOM override example =="
 cd /root/SDPO
 source .venv/bin/activate
+source experiments/math/common_quiet_env.sh
 
 export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
@@ -664,6 +710,8 @@ bash experiments/math/run_sdpo_math_smoke.sh reliability \
   actor_rollout_ref.model.override_config.attn_implementation=sdpa \
   critic.model.use_remove_padding=False \
   critic.model.override_config.attn_implementation=sdpa \
+  data.dataloader_num_workers=0 \
+  data.filter_overlong_prompts_workers=1 \
   data.max_response_length=768 \
   rollout_model_len=2560 \
   actor_max_token_len=2560 \
