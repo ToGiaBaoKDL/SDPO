@@ -12,7 +12,9 @@ Do not start with the config default `Qwen/Qwen3.5-9B` for first testing. It is
 a multimodal model, so it adds avoidable risk while validating a text-only math
 training pipeline.
 
-The A10 default path uses `attn_implementation=sdpa` so setup is fast and stable. FlashAttention is optional for later speed benchmarking, not required for SDPO correctness.
+The A10 default path uses `attn_implementation=sdpa` so setup is fast and stable.
+Do not build FlashAttention for this test run. FlashAttention is an optional speed
+optimization, not required for SDPO correctness.
 
 Copy each section into one notebook code cell. Use `%%bash` exactly, no space.
 
@@ -559,45 +561,6 @@ ray stop --force >/dev/null 2>&1 || true
 bash experiments/math/run_sdpo_math_smoke.sh reliability \
   actor_rollout_ref.model.override_config.attn_implementation=sdpa \
   critic.model.override_config.attn_implementation=sdpa \
-  data.max_response_length=768 \
-  rollout_model_len=2560 \
-  actor_max_token_len=2560 \
-  actor_rollout_ref.rollout.n=2 \
-  actor_rollout_ref.actor.self_distillation.max_reprompt_len=1792 \
-  actor_rollout_ref.rollout.gpu_memory_utilization=0.45
-
-## 16. Optional FlashAttention Install And Smoke
-
-Run this only after the SDPA tests pass and only if you want to benchmark FlashAttention.
-A long build is normal when no prebuilt wheel matches your exact PyTorch/CUDA combo.
-
-%%bash
-set -euo pipefail
-
-echo "== 16. Optional FlashAttention smoke =="
-cd /root/SDPO
-source .venv/bin/activate
-
-export PROJECT_ROOT="$PWD"
-export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
-export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
-export WANDB_MODE=offline
-export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
-export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
-
-uv pip install -q packaging psutil ninja
-MAX_JOBS=4 uv pip install flash-attn --no-build-isolation
-
-python - <<'PY'
-import flash_attn
-print("flash_attn_ok:", getattr(flash_attn, "__version__", "installed"))
-PY
-
-ray stop --force >/dev/null 2>&1 || true
-bash experiments/math/run_sdpo_math_smoke.sh reliability \
-  actor_rollout_ref.model.override_config.attn_implementation=flash_attention_2 \
-  critic.model.override_config.attn_implementation=flash_attention_2 \
   data.max_response_length=768 \
   rollout_model_len=2560 \
   actor_max_token_len=2560 \
