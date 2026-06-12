@@ -1,18 +1,18 @@
 # SDPO-Math Full Notebook Test
 
-Use this in a notebook cloned at `/root/SDPO` with 2x A10.
+Use this in a notebook cloned at `/root/SDPO` with 2x 24GB GPUs, for example L4 or A10.
 
 Run model order:
 
 1. Smoke/debug model: `Qwen/Qwen2.5-0.5B-Instruct`
-2. A10 thesis/debug target model: `Qwen/Qwen2.5-1.5B-Instruct`
-3. Stretch target after the A10 1.5B path passes: `Qwen/Qwen2.5-7B-Instruct`
+2. 24GB-GPU thesis/debug target model: `Qwen/Qwen2.5-1.5B-Instruct`
+3. Stretch target after the 1.5B path passes: `Qwen/Qwen2.5-7B-Instruct`
 
 Do not start with the config default `Qwen/Qwen3.5-9B` for first testing. It is
 a multimodal model, so it adds avoidable risk while validating a text-only math
 training pipeline.
 
-The A10 default path uses `attn_implementation=sdpa` so setup is fast and stable.
+The default path uses `attn_implementation=sdpa` so setup is fast and stable on L4/A10.
 Do not build FlashAttention for this test run. FlashAttention is an optional speed
 optimization, not required for SDPO correctness.
 
