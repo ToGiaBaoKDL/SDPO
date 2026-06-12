@@ -2,7 +2,7 @@ defaults:
   - ppo_trainer
   - _self_
 
-# Conservative 2x L40S SDPO-Math config. This file intentionally does not
+# Conservative 2-GPU SDPO-Math config. This file intentionally does not
 # inherit user.yaml because that file is cluster-specific and assumes 4 GPUs.
 
 # Rollout needs prompt + response. SDPO actor updates additionally score the
@@ -37,6 +37,8 @@ actor_rollout_ref:
   model:
     path: Qwen/Qwen3.5-9B
     trust_remote_code: True
+    override_config:
+      attn_implementation: sdpa
     use_remove_padding: True
     enable_gradient_checkpointing: True
     lora_rank: 32
@@ -107,6 +109,8 @@ actor_rollout_ref:
 critic:
   model:
     path: Qwen/Qwen3.5-9B
+    override_config:
+      attn_implementation: sdpa
 
 algorithm:
   adv_estimator: grpo

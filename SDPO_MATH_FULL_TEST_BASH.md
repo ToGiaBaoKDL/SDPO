@@ -1,0 +1,606 @@
+# SDPO-Math Full Notebook Test
+
+Use this in a notebook cloned at `/root/SDPO` with 2x A10.
+
+Run model order:
+
+1. Smoke/debug model: `Qwen/Qwen2.5-0.5B-Instruct`
+2. A10 thesis/debug target model: `Qwen/Qwen2.5-1.5B-Instruct`
+3. Stretch target after the A10 1.5B path passes: `Qwen/Qwen2.5-7B-Instruct`
+
+Do not start with the config default `Qwen/Qwen3.5-9B` for first testing. It is
+a multimodal model, so it adds avoidable risk while validating a text-only math
+training pipeline.
+
+The A10 default path uses `attn_implementation=sdpa` so setup is fast and stable. FlashAttention is optional for later speed benchmarking, not required for SDPO correctness.
+
+Copy each section into one notebook code cell. Use `%%bash` exactly, no space.
+
+## 0. Setup
+
+%%bash
+set -euo pipefail
+
+echo "== 0. Setup =="
+cd /root/SDPO
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export UV_CACHE_DIR="$PROJECT_ROOT/.cache/uv"
+export TOKENIZERS_PARALLELISM=false
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export CUDA_VISIBLE_DEVICES=0,1
+
+mkdir -p "$HF_HOME" "$UV_CACHE_DIR"
+chmod +x experiments/math/*.sh
+
+echo "repo=$PROJECT_ROOT"
+git rev-parse --short HEAD || true
+
+## 1. Create Python 3.10 Environment
+
+%%bash
+set -euo pipefail
+
+echo "== 1. Python env =="
+cd /root/SDPO
+
+python3 -m pip install -q -U uv
+uv venv .venv --python 3.10
+source .venv/bin/activate
+
+python --version
+which python
+
+## 2. Install Dependencies
+
+%%bash
+set -euo pipefail
+
+echo "== 2. Dependencies =="
+cd /root/SDPO
+source .venv/bin/activate
+
+uv pip install -q -U pip
+uv pip install -q pyyaml pyarrow pandas datasets
+uv pip install -q -e ".[vllm]"
+uv pip install -q "math-verify[antlr4_9_3]==0.8.0"
+python - <<'PY'
+import importlib.util
+required = ["torch", "ray", "transformers", "vllm", "datasets", "pyarrow", "math_verify"]
+for name in required:
+    assert importlib.util.find_spec(name), f"missing {name}"
+print("deps_ok:", ", ".join(required))
+PY
+
+## 3. Runtime And Model Sanity
+
+%%bash
+set -euo pipefail
+
+echo "== 3. Runtime/model sanity =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
+export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+
+nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv
+
+python - <<'PY'
+import platform
+import torch
+import ray
+import transformers
+import vllm
+from huggingface_hub import model_info
+import os
+
+print("python:", platform.python_version())
+print("cuda_available:", torch.cuda.is_available())
+print("gpu_count:", torch.cuda.device_count())
+print("torch:", torch.__version__)
+print("ray:", ray.__version__)
+print("transformers:", transformers.__version__)
+print("vllm:", vllm.__version__)
+
+assert torch.cuda.is_available(), "CUDA is not visible"
+assert torch.cuda.device_count() >= 2, "Expected at least 2 visible GPUs"
+
+for model_id in [os.environ["SMOKE_MODEL_PATH"], os.environ["TARGET_MODEL_PATH"]]:
+    info = model_info(model_id)
+    print("hf_model_ok:", info.modelId)
+PY
+
+## 4. Math-Verify Reward Smoke
+
+%%bash
+set -euo pipefail
+
+echo "== 4. math-verify reward smoke =="
+cd /root/SDPO
+source .venv/bin/activate
+
+python - <<'PY'
+import importlib.util
+
+spec = importlib.util.spec_from_file_location("math_feedback", "verl/utils/reward_score/feedback/math.py")
+math_feedback = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(math_feedback)
+
+cases = [
+    ("integer_correct", r"Reasoning... \boxed{34}", "34", {"feedback_mode": "safe"}, 1.0),
+    ("integer_wrong", r"Reasoning... \boxed{35}", "34", {"feedback_mode": "safe"}, 0.0),
+    ("bad_format", "Reasoning... final answer is 34", "34", {"feedback_mode": "safe"}, 0.0),
+    ("symbolic_math_verify", r"Reasoning... \boxed{1+1}", "2", {"feedback_mode": "safe"}, 1.0),
+]
+
+for name, pred, gt, extra, expected_score in cases:
+    out = math_feedback.compute_score(pred, gt, extra)
+    print(name, "score=", out["score"], "math_verify=", out["math_verify_available"], "feedback=", bool(out["feedback"]))
+    assert out["math_verify_available"] == 1, out
+    assert out["score"] == expected_score, out
+
+print("math_verify_reward_ok")
+PY
+
+## 5. Create DAPO-Math Data
+
+%%bash
+set -euo pipefail
+
+echo "== 5. Create DAPO-Math data =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+
+python examples/data_preprocess/dapo_math_processed.py \
+  --dataset_name open-r1/DAPO-Math-17k-Processed \
+  --subset en \
+  --local_save_dir data/dapo_math_en \
+  --report_dir reports \
+  --validation_size 512 \
+  --seed 42 \
+  --feedback_mode safe \
+  --deduplicate \
+  --decontaminate \
+  --ngram_jaccard_threshold 0.70
+
+python - <<'PY'
+import pyarrow.parquet as pq
+train_n = pq.read_table("data/dapo_math_en/train.parquet").num_rows
+val_n = pq.read_table("data/dapo_math_en/val.parquet").num_rows
+print("data_rows:", {"train": train_n, "val": val_n})
+assert train_n > 1000
+assert val_n == 512
+PY
+
+## 6. CPU/Data Pipeline Check
+
+%%bash
+set -euo pipefail
+
+echo "== 6. CPU/data pipeline check =="
+cd /root/SDPO
+source .venv/bin/activate
+
+PYTHON=.venv/bin/python bash experiments/math/test_cpu_pipeline.sh
+
+python - <<'PY'
+from pathlib import Path
+import pyarrow.parquet as pq
+
+train = pq.read_table("data/dapo_math_en/train.parquet").to_pylist()
+val = pq.read_table("data/dapo_math_en/val.parquet").to_pylist()
+sample = train[0]
+prompt = sample["prompt"][0]["content"]
+
+checks = {
+    "train_rows": len(train),
+    "val_rows": len(val),
+    "data_source": sample["data_source"],
+    "feedback_mode": sample["extra_info"].get("feedback_mode"),
+    "has_boxed_instruction": "\\boxed{}" in prompt,
+    "has_answer_colon": "Answer:" in prompt,
+    "has_reports": Path("reports/dapo_math_data_report.md").exists() and Path("reports/decontamination_report.md").exists(),
+}
+print("data_checks:", checks)
+
+assert checks["train_rows"] > 1000
+assert checks["val_rows"] == 512
+assert checks["data_source"] == "math_dapo"
+assert checks["feedback_mode"] == "safe"
+assert checks["has_boxed_instruction"]
+assert not checks["has_answer_colon"]
+assert checks["has_reports"]
+PY
+
+## 7. Common Model Exports
+
+%%bash
+set -euo pipefail
+
+echo "== 7. Common model exports =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export TOKENIZERS_PARALLELISM=false
+export CUDA_VISIBLE_DEVICES=0,1
+
+export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
+export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+
+echo "smoke_model=$SMOKE_MODEL_PATH"
+echo "target_model=$TARGET_MODEL_PATH"
+
+## 8. Base Model Validation Smoke
+
+%%bash
+set -euo pipefail
+
+echo "== 8. Base model validation smoke =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export CUDA_VISIBLE_DEVICES=0,1
+export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
+
+echo "model=$MODEL_PATH"
+ray stop --force >/dev/null 2>&1 || true
+
+python3 -m verl.trainer.main_ppo \
+  --config-name sdpo_math_l40s \
+  actor_rollout_ref.model.path="$MODEL_PATH" \
+  actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+  critic.model.path="$MODEL_PATH" \
+  critic.model.override_config.attn_implementation=sdpa \
+  trainer.experiment_name=base_model_val_smoke \
+  trainer.group_name=SDPO-Math-Base-Val \
+  trainer.logger='["console"]' \
+  trainer.val_before_train=True \
+  trainer.val_only=True \
+  trainer.save_freq=-1 \
+  data.train_max_samples=8 \
+  data.val_max_samples=8 \
+  data.train_batch_size=2 \
+  data.val_batch_size=2 \
+  data.max_response_length=1024 \
+  rollout_model_len=3072 \
+  actor_max_token_len=3072 \
+  actor_rollout_ref.model.lora_rank=0 \
+  actor_rollout_ref.model.lora_alpha=16 \
+  actor_rollout_ref.actor.policy_loss.loss_mode=vanilla \
+  actor_rollout_ref.actor.ppo_mini_batch_size=2 \
+  actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.rollout.max_model_len=3072 \
+  actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
+  actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.actor.self_distillation.include_environment_feedback=False \
+  actor_rollout_ref.actor.self_distillation.reliability_weighting=False
+
+## 9. Base RL Short Train
+
+%%bash
+set -euo pipefail
+
+echo "== 9. Base RL short train =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export CUDA_VISIBLE_DEVICES=0,1
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+
+echo "model=$MODEL_PATH"
+ray stop --force >/dev/null 2>&1 || true
+
+python3 -m verl.trainer.main_ppo \
+  --config-name sdpo_math_l40s \
+  actor_rollout_ref.model.path="$MODEL_PATH" \
+  actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+  critic.model.path="$MODEL_PATH" \
+  critic.model.override_config.attn_implementation=sdpa \
+  trainer.experiment_name=base_rl_5step \
+  trainer.group_name=SDPO-Math-Base-RL \
+  trainer.logger='["console"]' \
+  trainer.total_training_steps=5 \
+  trainer.val_before_train=False \
+  trainer.test_freq=5 \
+  trainer.save_freq=-1 \
+  data.train_max_samples=128 \
+  data.val_max_samples=64 \
+  data.train_batch_size=2 \
+  data.max_response_length=1024 \
+  rollout_model_len=3072 \
+  actor_max_token_len=3072 \
+  actor_rollout_ref.actor.ppo_mini_batch_size=2 \
+  actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.rollout.max_model_len=3072 \
+  actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
+  actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.actor.self_distillation.max_reprompt_len=2048 \
+  actor_rollout_ref.actor.policy_loss.loss_mode=vanilla \
+  actor_rollout_ref.actor.self_distillation.include_environment_feedback=False \
+  actor_rollout_ref.actor.self_distillation.reliability_weighting=False
+
+## 10. SDPO Smoke Tests
+
+%%bash
+set -euo pipefail
+
+echo "== 10. SDPO smoke tests =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export CUDA_VISIBLE_DEVICES=0,1
+export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
+
+echo "model=$MODEL_PATH"
+
+for variant in vanilla safe reliability; do
+  echo "-- smoke_variant=$variant"
+  ray stop --force >/dev/null 2>&1 || true
+  bash experiments/math/run_sdpo_math_smoke.sh "$variant" \
+    actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+    critic.model.override_config.attn_implementation=sdpa
+done
+
+## 11. Target-Model SDPO Smoke Tests
+
+%%bash
+set -euo pipefail
+
+echo "== 11. Target-model SDPO smoke tests =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export CUDA_VISIBLE_DEVICES=0,1
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+
+echo "model=$MODEL_PATH"
+
+for variant in vanilla safe reliability; do
+  echo "-- target_smoke_variant=$variant"
+  ray stop --force >/dev/null 2>&1 || true
+  bash experiments/math/run_sdpo_math_smoke.sh "$variant" \
+    actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+    critic.model.override_config.attn_implementation=sdpa
+done
+
+## 12. SDPO And SDPO+ Short Train
+
+%%bash
+set -euo pipefail
+
+echo "== 12. SDPO/SDPO+ short train =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export CUDA_VISIBLE_DEVICES=0,1
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+export TRAIN_MAX_SAMPLES=128
+export VAL_MAX_SAMPLES=64
+export TOTAL_TRAINING_STEPS=5
+export LOGGER='["console"]'
+
+echo "model=$MODEL_PATH"
+
+for script in \
+  experiments/math/run_sdpo_math_vanilla.sh \
+  experiments/math/run_sdpo_math_safe_feedback.sh \
+  experiments/math/run_sdpo_math_reliability.sh
+do
+  echo "-- train_script=$script"
+  ray stop --force >/dev/null 2>&1 || true
+  bash "$script" \
+    actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+    critic.model.override_config.attn_implementation=sdpa \
+    data.train_batch_size=2 \
+    data.max_response_length=1024 \
+    rollout_model_len=3072 \
+    actor_max_token_len=3072 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=2 \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
+    actor_rollout_ref.rollout.n=2 \
+    actor_rollout_ref.rollout.max_model_len=3072 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
+    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=3072 \
+    actor_rollout_ref.actor.self_distillation.max_reprompt_len=2048
+done
+
+## 13. Full Training
+
+Only run this after sections 0-12 pass.
+
+%%bash
+set -euo pipefail
+
+echo "== 13. Full training =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export CUDA_VISIBLE_DEVICES=0,1
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+export TRAIN_MAX_SAMPLES=-1
+export VAL_MAX_SAMPLES=-1
+export TOTAL_TRAINING_STEPS=null
+export LOGGER='["console"]'
+
+echo "model=$MODEL_PATH"
+
+echo "-- full_train=base_rl"
+ray stop --force >/dev/null 2>&1 || true
+python3 -m verl.trainer.main_ppo \
+  --config-name sdpo_math_l40s \
+  actor_rollout_ref.model.path="$MODEL_PATH" \
+  actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+  critic.model.path="$MODEL_PATH" \
+  critic.model.override_config.attn_implementation=sdpa \
+  trainer.experiment_name=base_rl_full \
+  trainer.group_name=SDPO-Math-Base-RL \
+  trainer.logger="$LOGGER" \
+  trainer.total_training_steps="$TOTAL_TRAINING_STEPS" \
+  data.train_max_samples="$TRAIN_MAX_SAMPLES" \
+  data.val_max_samples="$VAL_MAX_SAMPLES" \
+  data.train_batch_size=2 \
+  data.max_response_length=1024 \
+  rollout_model_len=3072 \
+  actor_max_token_len=3072 \
+  actor_rollout_ref.actor.ppo_mini_batch_size=2 \
+  actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.rollout.max_model_len=3072 \
+  actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
+  actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=3072 \
+  actor_rollout_ref.actor.self_distillation.max_reprompt_len=2048 \
+  actor_rollout_ref.actor.policy_loss.loss_mode=vanilla \
+  actor_rollout_ref.actor.self_distillation.include_environment_feedback=False \
+  actor_rollout_ref.actor.self_distillation.reliability_weighting=False
+
+for script in \
+  experiments/math/run_sdpo_math_vanilla.sh \
+  experiments/math/run_sdpo_math_safe_feedback.sh \
+  experiments/math/run_sdpo_math_reliability.sh
+do
+  echo "-- full_train_script=$script"
+  ray stop --force >/dev/null 2>&1 || true
+  bash "$script" \
+    actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+    critic.model.override_config.attn_implementation=sdpa \
+    data.train_batch_size=2 \
+    data.max_response_length=1024 \
+    rollout_model_len=3072 \
+    actor_max_token_len=3072 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=2 \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
+    actor_rollout_ref.rollout.n=2 \
+    actor_rollout_ref.rollout.max_model_len=3072 \
+    actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
+    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=3072 \
+    actor_rollout_ref.actor.self_distillation.max_reprompt_len=2048
+done
+
+## 14. Pass Criteria
+
+Before full training, confirm:
+
+- `math_verify=1` in the math reward smoke.
+- CPU pipeline prints `CPU pipeline checks passed`.
+- Base-model validation prints initial validation metrics.
+- Base RL 5-step run logs reward/actor metrics.
+- SDPO vanilla logs `self_distillation/*` metrics.
+- SDPO+ reliability logs `self_distillation/reliability_*` metrics.
+- No run ends with CUDA OOM, Ray worker death, or NaN loss.
+
+## 15. OOM Override Cell
+
+%%bash
+set -euo pipefail
+
+echo "== 15. OOM override example =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export CUDA_VISIBLE_DEVICES=0,1
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+
+ray stop --force >/dev/null 2>&1 || true
+bash experiments/math/run_sdpo_math_smoke.sh reliability \
+  actor_rollout_ref.model.override_config.attn_implementation=sdpa \
+  critic.model.override_config.attn_implementation=sdpa \
+  data.max_response_length=768 \
+  rollout_model_len=2560 \
+  actor_max_token_len=2560 \
+  actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.actor.self_distillation.max_reprompt_len=1792 \
+  actor_rollout_ref.rollout.gpu_memory_utilization=0.45
+
+## 16. Optional FlashAttention Install And Smoke
+
+Run this only after the SDPA tests pass and only if you want to benchmark FlashAttention.
+A long build is normal when no prebuilt wheel matches your exact PyTorch/CUDA combo.
+
+%%bash
+set -euo pipefail
+
+echo "== 16. Optional FlashAttention smoke =="
+cd /root/SDPO
+source .venv/bin/activate
+
+export PROJECT_ROOT="$PWD"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
+export WANDB_MODE=offline
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export CUDA_VISIBLE_DEVICES=0,1
+export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
+
+uv pip install -q packaging psutil ninja
+MAX_JOBS=4 uv pip install flash-attn --no-build-isolation
+
+python - <<'PY'
+import flash_attn
+print("flash_attn_ok:", getattr(flash_attn, "__version__", "installed"))
+PY
+
+ray stop --force >/dev/null 2>&1 || true
+bash experiments/math/run_sdpo_math_smoke.sh reliability \
+  actor_rollout_ref.model.override_config.attn_implementation=flash_attention_2 \
+  critic.model.override_config.attn_implementation=flash_attention_2 \
+  data.max_response_length=768 \
+  rollout_model_len=2560 \
+  actor_max_token_len=2560 \
+  actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.actor.self_distillation.max_reprompt_len=1792 \
+  actor_rollout_ref.rollout.gpu_memory_utilization=0.45
