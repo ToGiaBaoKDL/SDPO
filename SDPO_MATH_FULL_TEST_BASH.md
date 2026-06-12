@@ -99,15 +99,49 @@ assert actor_attn == "sdpa", actor_attn
 assert critic_attn == "sdpa", critic_attn
 PY
 
-if rg -n "flash_attention_2|flash-attn|flash_attn" \
-  verl/trainer/config/sdpo_math_l40s.yaml \
-  experiments/math/run_sdpo_math_smoke.sh \
-  experiments/math/run_sdpo_math_vanilla.sh \
-  experiments/math/run_sdpo_math_safe_feedback.sh \
-  experiments/math/run_sdpo_math_reliability.sh; then
-  echo "Unexpected FlashAttention reference in runnable config/script." >&2
-  exit 1
-fi
+python - <<'PY'
+from pathlib import Path
+
+script_paths = [
+    Path("experiments/math/run_sdpo_math_smoke.sh"),
+    Path("experiments/math/run_sdpo_math_vanilla.sh"),
+    Path("experiments/math/run_sdpo_math_safe_feedback.sh"),
+    Path("experiments/math/run_sdpo_math_reliability.sh"),
+]
+
+for path in script_paths:
+    text = path.read_text(encoding="utf-8")
+    assert 'ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"' in text, path
+    forbidden = ["flash_attention_2", "flash-attn", "flash_attn"]
+    hits = [term for term in forbidden if term in text]
+    if hits:
+        raise SystemExit(f"Unexpected FlashAttention reference in {path}: {hits}")
+
+config_text = Path("verl/trainer/config/sdpo_math_l40s.yaml").read_text(encoding="utf-8")
+for term in ["flash_attention_2", "flash-attn", "flash_attn"]:
+    if term in config_text:
+        raise SystemExit(f"Unexpected FlashAttention reference in config: {term}")
+
+model_text = Path("verl/workers/config/model.py").read_text(encoding="utf-8")
+assert 'self.override_config.get("attn_implementation", "sdpa")' in model_text
+
+worker_text = Path("verl/workers/fsdp_workers.py").read_text(encoding="utf-8")
+checks = [
+    'override_model_config.get("attn_implementation", "sdpa")',
+    'override_config.get("attn_implementation", "sdpa")',
+]
+for snippet in checks:
+    if snippet not in worker_text:
+        raise SystemExit(f"Missing SDPA default in fsdp_workers.py: {snippet}")
+if worker_text.count('override_config.get("attn_implementation", "sdpa")') < 2:
+    raise SystemExit("Expected both critic/reward SDPA defaults in fsdp_workers.py")
+
+for path in [Path("verl/workers/config/model.py"), Path("verl/workers/fsdp_workers.py")]:
+    text = path.read_text(encoding="utf-8")
+    for needle in ['get("attn_implementation", "flash_attention_2")', "flash-attn", "flash_attn"]:
+        if needle in text:
+            raise SystemExit(f"Unexpected FlashAttention default/install reference in {path}: {needle}")
+PY
 
 echo "attention_preflight_ok"
 
@@ -332,6 +366,9 @@ python3 -m verl.trainer.main_ppo \
   actor_rollout_ref.actor.self_distillation.reliability_weighting=False
 
 ## 9. Base RL Short Train
+
+Keep both attention overrides as `sdpa`. Do not replace them with
+`flash_attention_2` unless `flash-attn` is installed and import-tested.
 
 %%bash
 set -euo pipefail
