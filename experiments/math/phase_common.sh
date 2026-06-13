@@ -82,8 +82,8 @@ sdpo_math_init_logging() {
     export LOGGER='["file"]'
     export VERL_FILE_LOGGER_ROOT="${log_dir}/metrics"
     RAY_LOG_TO_DRIVER_OVERRIDE=(
-      ray_kwargs.ray_init.log_to_driver=False
-      ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT="${VERL_FILE_LOGGER_ROOT}"
+      +ray_kwargs.ray_init.log_to_driver=False
+      +ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT="${VERL_FILE_LOGGER_ROOT}"
     )
     echo "ultra_quiet=1 metrics=${VERL_FILE_LOGGER_ROOT}"
   else

@@ -38,6 +38,11 @@ for path, expected in expected_defaults.items():
 runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding="utf-8")
 for expected in ["Qwen/Qwen2.5-0.5B-Instruct", "Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B"]:
     assert expected in runner, f"benchmark runner missing model default {expected}"
+
+phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-8")
+assert "+ray_kwargs.ray_init.log_to_driver=False" in phase_common
+assert "+ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT=" in phase_common
+assert "\n      ray_kwargs.ray_init.log_to_driver=False" not in phase_common
 PY
 
 echo "[2/5] Checking YAML config"
