@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import glob
 import json
+import math
+import re
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +58,63 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def parse_number(raw: str) -> int | float | None:
+    text = raw.strip()
+    try:
+        value = ast.literal_eval(text)
+    except Exception:
+        match = re.fullmatch(r"np\.(?:float|int)\d*\((.+)\)", text)
+        if match is None:
+            return None
+        try:
+            value = ast.literal_eval(match.group(1))
+        except Exception:
+            return None
+
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | float):
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
+        return value
+    return None
+
+
+def parse_console_metric_line(line: str) -> dict[str, Any] | None:
+    idx = line.find("step:")
+    if idx < 0:
+        return None
+
+    parts = line[idx:].strip().split(" - ")
+    if not parts or not parts[0].startswith("step:"):
+        return None
+
+    step = parse_number(parts[0].split(":", 1)[1])
+    if step is None:
+        return None
+
+    data: dict[str, int | float] = {}
+    for part in parts[1:]:
+        if ":" not in part:
+            continue
+        key, raw_value = part.split(":", 1)
+        value = parse_number(raw_value)
+        if value is not None:
+            data[key] = value
+
+    return {"step": step, "data": data}
+
+
+def load_console_log(path: Path) -> list[dict[str, Any]]:
+    rows = []
+    with path.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            row = parse_console_metric_line(line)
+            if row is not None and row["data"]:
+                rows.append(row)
+    return rows
+
+
 def pick(data: dict[str, Any], contains: list[str], prefer_prefix: str | None = None) -> Any:
     candidates = [
         (key, value)
@@ -97,6 +157,32 @@ def summarize_metric_file(path: Path) -> dict[str, Any]:
     }
 
 
+def summarize_console_log(path: Path) -> dict[str, Any]:
+    rows = load_console_log(path)
+    if not rows:
+        raise ValueError(f"no console metric rows found: {path}")
+
+    final = rows[-1]
+    data = final.get("data", {})
+    return {
+        "variant": infer_variant(path),
+        "step": final.get("step", ""),
+        "val_acc_mean": pick(data, ["val-core", "/acc/", "mean"], "val-core/"),
+        "val_acc_best": pick(data, ["val-core", "/acc/", "best"], "val-core/"),
+        "val_reward_mean": pick(data, ["val-core", "/reward/", "mean"], "val-core/"),
+        "incorrect_format_mean": pick(data, ["val-aux", "/incorrect_format/", "mean"], "val-aux/"),
+        "truncated_mean": pick(data, ["val-aux", "/truncated/", "mean"], "val-aux/"),
+        "math_verify_available": pick(data, ["val-aux", "/math_verify_available/", "mean"], "val-aux/"),
+        "sdpo_reprompt_fraction": data.get("self_distillation/reprompt_sample_fraction", ""),
+        "sdpo_feedback_used_fraction": data.get("self_distillation/feedback_used_fraction", ""),
+        "sdpo_reliability_weight_mean": data.get("self_distillation/reliability_weight_mean", ""),
+        "actor_pg_loss": data.get("actor/pg_loss", ""),
+        "actor_grad_norm": data.get("actor/grad_norm", ""),
+        "throughput_tokens_per_s": data.get("perf/throughput", ""),
+        "metric_file": str(path),
+    }
+
+
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=SUMMARY_COLUMNS)
@@ -116,10 +202,21 @@ def write_markdown(path: Path, rows: list[dict[str, Any]]) -> None:
 def main() -> None:
     args = parse_args()
     metric_files = sorted(glob.glob(str(args.log_dir / "metrics" / "SDPO-Math" / "*.jsonl")))
-    if not metric_files:
-        raise SystemExit(f"no file logger metrics found under {args.log_dir}/metrics/SDPO-Math")
+    if metric_files:
+        rows = [summarize_metric_file(Path(path)) for path in metric_files]
+    else:
+        rows = []
+        for path in sorted(args.log_dir.glob("*.log")):
+            try:
+                rows.append(summarize_console_log(path))
+            except ValueError:
+                continue
+        if not rows:
+            raise SystemExit(
+                f"no file logger metrics found under {args.log_dir}/metrics/SDPO-Math "
+                f"and no console metrics found under {args.log_dir}"
+            )
 
-    rows = [summarize_metric_file(Path(path)) for path in metric_files]
     rows.sort(key=lambda row: VARIANTS.index(row["variant"]) if row["variant"] in VARIANTS else len(VARIANTS))
 
     output_dir = args.output_dir or args.log_dir
