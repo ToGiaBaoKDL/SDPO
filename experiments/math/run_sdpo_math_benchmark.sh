@@ -16,11 +16,12 @@ CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 LOGGER="${LOGGER:-[\"console\"]}"
 VARIANTS="${VARIANTS:-base_model base_rl sdpo_vanilla sdpo_reliability}"
 DRY_RUN="${DRY_RUN:-0}"
+SEED="${SEED:-42}"
 
 case "${PHASE}" in
   pilot)
     RUN_PROFILE="${RUN_PROFILE:-fast}"
-    MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+    MODEL_PATH="${MODEL_PATH:-${PILOT_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}}"
     TRAIN_STEPS="${TRAIN_STEPS:-10}"
     TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"
     VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
@@ -31,7 +32,7 @@ case "${PHASE}" in
     ;;
   scale_decision|ablation)
     RUN_PROFILE="${RUN_PROFILE:-balanced}"
-    MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+    MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3.5-4B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-50}"
     case "${RUN_PROFILE}" in
       fast)
@@ -58,7 +59,7 @@ case "${PHASE}" in
     ;;
   thesis)
     RUN_PROFILE="${RUN_PROFILE:-quality}"
-    MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+    MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-300}"
     TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:--1}"
     VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
@@ -67,35 +68,52 @@ case "${PHASE}" in
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-True}"
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Thesis}"
     ;;
-  scale_7b)
-    RUN_PROFILE="${RUN_PROFILE:-a100_7b}"
-    MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-7B-Instruct}"
+  scale_9b|scale_7b)
+    RUN_PROFILE="${RUN_PROFILE:-high_mem_9b}"
+    MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-300}"
     TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:--1}"
     VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
     EVAL_FREQ="${EVAL_FREQ:-100}"
     SAVE_FREQ="${SAVE_FREQ:-100}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-True}"
-    GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-7B}"
+    GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-9B}"
     ;;
   *)
-    echo "Unknown PHASE=${PHASE}. Use pilot, scale_decision, thesis, or scale_7b." >&2
+    echo "Unknown PHASE=${PHASE}. Use pilot, scale_decision, thesis, or scale_9b." >&2
     exit 1
     ;;
 esac
 
 export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH
-export TRAIN_MAX_SAMPLES VAL_MAX_SAMPLES
+export TRAIN_MAX_SAMPLES VAL_MAX_SAMPLES SEED
 
 RUN_TAG="${RUN_TAG:-${PHASE}_${RUN_PROFILE}_${TRAIN_STEPS}_$(date +%Y%m%d_%H%M%S)}"
+EXP_SUFFIX="${EXP_SUFFIX:-${RUN_TAG}_seed${SEED}}"
 LOG_DIR="${LOG_DIR:-${PROJECT_ROOT}/logs/sdpo_math_phase/${RUN_TAG}}"
 mkdir -p "${LOG_DIR}"
 
 sdpo_math_prepare_phase_run "${RUN_PROFILE}" "${LOG_DIR}"
 
 echo "phase=${PHASE} model=${MODEL_PATH} variants=${VARIANTS} dry_run=${DRY_RUN}"
-echo "steps=${TRAIN_STEPS} train_max=${TRAIN_MAX_SAMPLES} val_max=${VAL_MAX_SAMPLES} eval_freq=${EVAL_FREQ} save_freq=${SAVE_FREQ}"
+echo "steps=${TRAIN_STEPS} train_max=${TRAIN_MAX_SAMPLES} val_max=${VAL_MAX_SAMPLES} eval_freq=${EVAL_FREQ} save_freq=${SAVE_FREQ} seed=${SEED}"
+echo "exp_suffix=${EXP_SUFFIX}"
 echo "logs=${LOG_DIR}"
+
+python3 "${SCRIPT_DIR}/write_phase_manifest.py" \
+  --output "${LOG_DIR}/manifest.json" \
+  --phase "${PHASE}" \
+  --profile "${RUN_PROFILE}" \
+  --model "${MODEL_PATH}" \
+  --variants "${VARIANTS}" \
+  --train-steps "${TRAIN_STEPS}" \
+  --train-max-samples "${TRAIN_MAX_SAMPLES}" \
+  --val-max-samples "${VAL_MAX_SAMPLES}" \
+  --eval-freq "${EVAL_FREQ}" \
+  --save-freq "${SAVE_FREQ}" \
+  --seed "${SEED}" \
+  --exp-suffix "${EXP_SUFFIX}" \
+  --log-dir "${LOG_DIR}"
 
 run_with_log() {
   local exp_name="$1"
@@ -205,7 +223,7 @@ run_sdpo_variant() {
 }
 
 for variant in ${VARIANTS}; do
-  exp_name="${variant}_${PHASE}_${RUN_PROFILE}_${TRAIN_STEPS}"
+  exp_name="${variant}_${EXP_SUFFIX}"
   echo
   echo "== variant=${variant} exp=${exp_name} =="
   case "${variant}" in

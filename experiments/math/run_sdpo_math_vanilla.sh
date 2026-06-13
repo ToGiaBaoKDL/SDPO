@@ -7,7 +7,7 @@ export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH:-}"
 source "${SCRIPT_DIR}/common_quiet_env.sh"
 
 CONFIG_NAME="${CONFIG_NAME:-sdpo_math_l40s}"
-MODEL_PATH="${MODEL_PATH:-Qwen/Qwen3.5-9B}"
+MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}}"
 EXP_NAME="${EXP_NAME:-sdpo_math_vanilla_l40s}"
 TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:--1}"
 VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:--1}"

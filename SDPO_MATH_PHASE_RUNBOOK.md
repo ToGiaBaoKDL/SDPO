@@ -1,6 +1,6 @@
 # SDPO-Math Phase Runbook
 
-Notebook-ready commands after `SDPO_MATH_FULL_TEST_BASH.md` Tasks 1-12 pass.
+Notebook-ready commands for setting up and running the SDPO-Math benchmark phases.
 Use each `%%bash` block as one notebook cell.
 
 The phase runner is centralized in `experiments/math/run_sdpo_math_benchmark.sh`.
@@ -8,6 +8,37 @@ Profile settings and shared Hydra overrides live in `experiments/math/phase_comm
 Do not copy training logic into new notebook cells unless you also move it back into these scripts.
 
 Validation in these phases uses `data/dapo_math_en/val.parquet`, the held-out DAPO-Math English split. It is not AIME.
+
+## Required Setup
+
+Use a fresh clone at `/root/SDPO` and pull the latest code before running phases. The setup script creates a Python 3.10 uv venv, installs the project with vLLM, installs `math-verify`, verifies the Hugging Face model ids, prepares the English DAPO-Math split if missing, and runs CPU/data checks.
+
+Run once per notebook VM:
+
+%%bash
+set -euo pipefail
+
+echo "== Setup SDPO-Math notebook =="
+cd /root/SDPO
+git pull
+chmod +x experiments/math/*.sh experiments/math/*.py
+bash experiments/math/setup_math_notebook.sh
+
+Useful setup flags: `PREPARE_DATA=0` skips data creation, `RUN_CPU_CHECK=0` skips CPU checks, `VERIFY_HF_MODELS=0` skips Hugging Face model-id checks, and `INSTALL_MATH_VERIFY=0` skips `math-verify` installation. For thesis runs, keep `INSTALL_MATH_VERIFY=1`.
+
+## Shared Cell Prefix
+
+After setup, every phase cell uses `cd /root/SDPO` then `source experiments/math/math_env.sh`.
+
+That helper activates `.venv` if it exists, sets `PROJECT_ROOT`, `PYTHONPATH`, `HF_HOME`, `UV_CACHE_DIR`, quiet logging defaults, `WANDB_MODE=offline`, `CUDA_VISIBLE_DEVICES=0,1`, and default model names.
+
+Model ladder:
+
+- Phase 1 pilot: `Qwen/Qwen2.5-0.5B-Instruct`.
+- Phase 2 scale decision: `Qwen/Qwen3.5-4B`.
+- Phase 4 thesis: `Qwen/Qwen3.5-9B`.
+
+The public Qwen3.5 model ids verified for this runbook are `Qwen/Qwen3.5-4B` and `Qwen/Qwen3.5-9B`, not `*-Instruct`.
 
 ## Benchmark Variants
 
@@ -26,9 +57,9 @@ Use `sdpo_vanilla` as the main SDPO baseline in thesis tables. `sdpo_reliability
 ## Profiles
 
 - `fast`: pilot profile for quick correctness checks. `train_batch_size=4`, `rollout.n=2`, `agent_workers=8`, response length `1024`.
-- `balanced`: scale-decision profile. `train_batch_size=8`, `rollout.n=2`, `agent_workers=8`, response length `1536`.
-- `quality`: main 1.5B thesis profile. `train_batch_size=8`, `rollout.n=4`, `agent_workers=8`, response length `1536`.
-- `a100_7b`: optional 7B profile for 2x A100. `train_batch_size=8`, `rollout.n=4`, `agent_workers=16`, response length `2048`.
+- `balanced`: scale-decision profile for Qwen3.5-4B. `train_batch_size=8`, `rollout.n=2`, `agent_workers=8`, response length `1536`.
+- `quality`: thesis profile for Qwen3.5-9B. `train_batch_size=8`, `rollout.n=4`, `agent_workers=8`, response length `1536`.
+- `high_mem_9b`: optional high-memory Qwen3.5-9B profile. `a100_7b` remains as a legacy alias.
 
 Recommended order:
 
@@ -36,10 +67,11 @@ Recommended order:
 2. Phase 1: pilot, confirms all variants run.
 3. Phase 2: scale-decision benchmark.
 4. Phase 3: inspect logs.
-5. Phase 4: thesis 1.5B run.
-6. Phase 5: optional 7B run only after Phase 2/4 is stable.
+5. Phase 4: thesis 9B run.
+6. Phase 5: optional compatibility run only after Phase 2/4 is stable.
+7. Phase 6: report-readiness check.
 
-Use `ULTRA_QUIET=1` for long runs. It hides Ray worker stdout and writes metrics JSONL under the run log directory.
+Use `ULTRA_QUIET=1` for long runs. It hides Ray worker stdout and writes metrics JSONL under the run log directory. Keep `ULTRA_QUIET=1` for Phase 4 so `summary.csv` and report-readiness checks can be generated from file logs.
 
 ## Phase 0. Preflight
 
@@ -50,96 +82,21 @@ set -euo pipefail
 
 echo "== Phase 0: preflight =="
 cd /root/SDPO
-source .venv/bin/activate
-source experiments/math/phase_common.sh
+source experiments/math/math_env.sh
 
-export PROJECT_ROOT="$PWD"
-export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
-export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
-
-python - <<'PY'
-from pathlib import Path
-import re
-import pyarrow.parquet as pq
-import yaml
-
-
-def require_snippet(path: str, text: str, snippet: str) -> None:
-    if snippet not in text:
-        raise AssertionError(f"{path} is stale or inconsistent; missing: {snippet}")
-
-with open("verl/trainer/config/sdpo_math_l40s.yaml", encoding="utf-8") as f:
-    cfg = yaml.safe_load(f)
-
-checks = {
-    "train_files": cfg["data"]["train_files"],
-    "val_files": cfg["data"]["val_files"],
-    "actor_attn": cfg["actor_rollout_ref"]["model"]["override_config"]["attn_implementation"],
-    "critic_attn": cfg["critic"]["model"]["override_config"]["attn_implementation"],
-    "use_remove_padding": cfg["actor_rollout_ref"]["model"]["use_remove_padding"],
-    "dataloader_workers": cfg["data"]["dataloader_num_workers"],
-    "filter_workers": cfg["data"]["filter_overlong_prompts_workers"],
-}
-print("config:", checks)
-assert "data/dapo_math_en/train.parquet" in checks["train_files"][0]
-assert "data/dapo_math_en/val.parquet" in checks["val_files"][0]
-assert checks["actor_attn"] == "sdpa"
-assert checks["critic_attn"] == "sdpa"
-assert checks["use_remove_padding"] is False
-assert checks["dataloader_workers"] == 0
-assert checks["filter_workers"] == 1
-
-train_rows = pq.read_table("data/dapo_math_en/train.parquet").num_rows
-val_rows = pq.read_table("data/dapo_math_en/val.parquet").num_rows
-print("data_rows:", {"train": train_rows, "val": val_rows})
-assert train_rows > 1000
-assert val_rows >= 128
-
-phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-8")
-for snippet in [
-    "fast)",
-    "balanced)",
-    "quality)",
-    "a100_7b)",
-    "AGENT_WORKERS=8",
-    "actor_rollout_ref.rollout.val_kwargs.n=1",
-]:
-    require_snippet("experiments/math/phase_common.sh", phase_common, snippet)
-
-runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding="utf-8")
-variant_match = re.search(r'^VARIANTS="\$\{VARIANTS:-(?P<variants>[^"]+)\}"', runner, re.MULTILINE)
-expected_variants = ["base_model", "base_rl", "sdpo_vanilla", "sdpo_reliability"]
-if not variant_match:
-    raise AssertionError("experiments/math/run_sdpo_math_benchmark.sh is missing the VARIANTS default")
-actual_variants = variant_match.group("variants").split()
-if actual_variants != expected_variants:
-    raise AssertionError(
-        "experiments/math/run_sdpo_math_benchmark.sh has stale benchmark variants: "
-        f"actual={actual_variants}, expected={expected_variants}. "
-        "Run git pull in /root/SDPO or copy the latest benchmark script."
-    )
-for snippet in [
-    "scale_decision|ablation)",
-    "thesis)",
-    "scale_7b)",
-    "DRY_RUN",
-    "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
-]:
-    require_snippet("experiments/math/run_sdpo_math_benchmark.sh", runner, snippet)
-
-print("phase0_ok")
-PY
+python experiments/math/preflight_phase.py
 
 export DRY_RUN=1
 export PHASE=pilot
 export RUN_PROFILE=fast
 export TRAIN_STEPS=1
 export VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability"
+export RUN_TAG=preflight_dryrun
+export EXP_SUFFIX=preflight_dryrun_seed42
 export LOG_DIR="$PROJECT_ROOT/logs/sdpo_math_phase/preflight_dryrun"
 
 bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_preflight_dryrun.log
-python experiments/math/validate_benchmark_dryrun.py --log-dir "$LOG_DIR"
+python experiments/math/validate_benchmark_dryrun.py --log-dir "$LOG_DIR" --exp-suffix "$EXP_SUFFIX"
 
 ## Phase 1. Pilot Test
 
@@ -153,15 +110,10 @@ set -euo pipefail
 
 echo "== Phase 1: pilot test =="
 cd /root/SDPO
-source .venv/bin/activate
+source experiments/math/math_env.sh
 
-export PROJECT_ROOT="$PWD"
-export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
-export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 export PHASE="${PHASE:-pilot}"
 export RUN_PROFILE="${RUN_PROFILE:-fast}"
-export MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
 export TRAIN_STEPS="${TRAIN_STEPS:-10}"
 export ULTRA_QUIET="${ULTRA_QUIET:-0}"
 
@@ -185,15 +137,10 @@ set -euo pipefail
 
 echo "== Phase 2: scale-decision benchmark =="
 cd /root/SDPO
-source .venv/bin/activate
+source experiments/math/math_env.sh
 
-export PROJECT_ROOT="$PWD"
-export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
-export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 export PHASE="${PHASE:-scale_decision}"
 export RUN_PROFILE="${RUN_PROFILE:-balanced}"
-export MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
 export TRAIN_STEPS="${TRAIN_STEPS:-50}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 
@@ -208,64 +155,15 @@ set -euo pipefail
 
 echo "== Phase 3: inspect logs =="
 cd /root/SDPO
+source experiments/math/math_env.sh
 
 LOG_DIR="${LOG_DIR:-$(ls -td logs/sdpo_math_phase/* | head -1)}"
-export LOG_DIR
-echo "log_dir=$LOG_DIR"
-
-for log in "$LOG_DIR"/*.log; do
-  echo
-  echo "## $(basename "$log")"
-  grep "step:" "$log" | tail -3 | sed 's/ - /\n  /g' | \
-    grep -E "step:|training/global_step|val-core|val-aux|reward|score|acc|format|truncated|self_distillation|actor/grad_norm|actor/pg_loss|perf/throughput" || true
-done
-
-python - <<'PY'
-import glob
-import json
-import os
-from pathlib import Path
-
-log_dir = Path(os.environ["LOG_DIR"])
-metric_files = sorted(glob.glob(str(log_dir / "metrics" / "SDPO-Math" / "*.jsonl")))
-if metric_files:
-    print("\nfile_logger_metrics:")
-
-for path in metric_files:
-    print(f"\n## {Path(path).name}")
-    rows = []
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            if line.strip():
-                rows.append(json.loads(line))
-    for row in rows[-3:]:
-        data = row.get("data", {})
-        print(f"step:{row.get('step')}")
-        for key, value in sorted(data.items()):
-            if any(token in key for token in [
-                "training/global_step",
-                "val-core",
-                "val-aux",
-                "reward",
-                "score",
-                "acc",
-                "format",
-                "truncated",
-                "self_distillation",
-                "actor/grad_norm",
-                "actor/pg_loss",
-                "perf/throughput",
-            ]):
-                print(f"  {key}:{value}")
-PY
-
-echo
-echo "checkpoints:"
-find checkpoints/sdpo_math -maxdepth 3 -type d -name 'global_step_*' 2>/dev/null | sort | tail -20 || true
+python experiments/math/inspect_phase_logs.py --log-dir "$LOG_DIR"
+python experiments/math/summarize_phase_results.py --log-dir "$LOG_DIR" || true
 
 ## Phase 4. Main Thesis Runs
 
-Purpose: final 1.5B thesis comparison on 2x L4/A10/L40S.
+Purpose: final Qwen3.5-9B thesis comparison.
 
 Default: `PHASE=thesis`, `RUN_PROFILE=quality`, `TRAIN_STEPS=300`, validation every `100` steps.
 This runs the frozen `base_model` evaluation plus the 3 train variants.
@@ -275,15 +173,10 @@ set -euo pipefail
 
 echo "== Phase 4: main thesis runs =="
 cd /root/SDPO
-source .venv/bin/activate
+source experiments/math/math_env.sh
 
-export PROJECT_ROOT="$PWD"
-export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
-export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 export PHASE="${PHASE:-thesis}"
 export RUN_PROFILE="${RUN_PROFILE:-quality}"
-export MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
 export TRAIN_STEPS="${TRAIN_STEPS:-300}"
 export EVAL_FREQ="${EVAL_FREQ:-100}"
 export SAVE_FREQ="${SAVE_FREQ:-100}"
@@ -292,24 +185,19 @@ export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
 
-## Phase 5. Optional 2x A100 7B
+## Phase 5. Optional Compatibility Run
 
-Use only after Phase 2/4 is stable and you have 2x A100.
+Use only after Phase 2/4 is stable and you want the legacy high-memory profile.
 
 %%bash
 set -euo pipefail
 
-echo "== Phase 5: optional 2x A100 7B =="
+echo "== Phase 5: optional compatibility run =="
 cd /root/SDPO
-source .venv/bin/activate
+source experiments/math/math_env.sh
 
-export PROJECT_ROOT="$PWD"
-export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
-export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
-export PHASE=scale_7b
-export RUN_PROFILE=a100_7b
-export MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-7B-Instruct}"
+export PHASE=scale_9b
+export RUN_PROFILE=high_mem_9b
 export TRAIN_STEPS="${TRAIN_STEPS:-300}"
 export EVAL_FREQ="${EVAL_FREQ:-100}"
 export SAVE_FREQ="${SAVE_FREQ:-100}"
@@ -317,6 +205,32 @@ export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
+
+## Phase 6. Report Readiness
+
+After Phase 4 finishes, use this checklist before writing thesis/article claims.
+
+Required from this runbook:
+
+- `logs/sdpo_math_phase/<run>/manifest.json` exists and records git commit, model, phase, profile, seed, variants, train/val sample counts, eval frequency, and save frequency.
+- `logs/sdpo_math_phase/<run>/summary.csv` exists after Phase 3.
+- All 4 variants are present: `base_model`, `base_rl`, `sdpo_vanilla`, `sdpo_reliability`.
+- Main result column is `val-core/math_dapo/acc/mean@1` from the held-out DAPO-Math English validation split.
+- Diagnostic columns include format error, truncation, SDPO reprompt fraction, SDPO feedback-used fraction, and reliability weight mean.
+- The final thesis comparison uses one shared model, data split, validation size, generation setting, seed, and profile across all variants.
+
+For arXiv-quality claims, DAPO-Math validation alone is not enough. Add at least one external held-out math benchmark and, if compute allows, repeat the Phase 4 comparison with multiple seeds such as `SEED=42`, `SEED=43`, and `SEED=44`.
+
+%%bash
+set -euo pipefail
+cd /root/SDPO
+source experiments/math/math_env.sh
+
+LOG_DIR="${LOG_DIR:-$(ls -td logs/sdpo_math_phase/* | head -1)}"
+python experiments/math/summarize_phase_results.py --log-dir "$LOG_DIR"
+python experiments/math/check_phase_report_ready.py --log-dir "$LOG_DIR" --require-checkpoints
+cat "$LOG_DIR/manifest.json"
+cat "$LOG_DIR/summary.md"
 
 ## Useful Overrides
 
@@ -325,7 +239,7 @@ Run only training variants:
 %%bash
 set -euo pipefail
 cd /root/SDPO
-source .venv/bin/activate
+source experiments/math/math_env.sh
 export PHASE=scale_decision
 export VARIANTS="base_rl sdpo_vanilla sdpo_reliability"
 bash experiments/math/run_sdpo_math_benchmark.sh
@@ -335,7 +249,7 @@ Run only the strongest SDPO+ variant:
 %%bash
 set -euo pipefail
 cd /root/SDPO
-source .venv/bin/activate
+source experiments/math/math_env.sh
 export PHASE=thesis
 export VARIANTS="sdpo_reliability"
 bash experiments/math/run_sdpo_math_benchmark.sh

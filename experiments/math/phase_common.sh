@@ -40,7 +40,7 @@ sdpo_math_configure_profile() {
       REPROMPT_LEN=2560
       GPU_UTIL=0.64
       ;;
-    a100_7b)
+    high_mem_9b|a100_7b)
       TRAIN_BS=8
       ROLLOUT_N=4
       AGENT_WORKERS=16
@@ -52,7 +52,7 @@ sdpo_math_configure_profile() {
       GPU_UTIL=0.80
       ;;
     *)
-      echo "Unknown RUN_PROFILE=${profile}. Use fast, balanced, quality, or a100_7b." >&2
+      echo "Unknown RUN_PROFILE=${profile}. Use fast, balanced, quality, or high_mem_9b." >&2
       return 1
       ;;
   esac
@@ -67,7 +67,7 @@ sdpo_math_validate_profile() {
     return 1
   fi
   if (( total_rollouts % AGENT_WORKERS != 0 )); then
-    echo "Invalid profile: train_batch_size * rollout.n must divide agent workers." >&2
+    echo "Invalid profile: train_batch_size * rollout.n must be divisible by agent workers." >&2
     return 1
   fi
 }
@@ -99,6 +99,7 @@ sdpo_math_build_common_overrides() {
     critic.model.override_config.attn_implementation=sdpa
     data.dataloader_num_workers=0
     data.filter_overlong_prompts_workers=1
+    data.seed="${SEED:-42}"
     data.train_batch_size="${TRAIN_BS}"
     data.val_batch_size="${VAL_BS}"
     data.max_response_length="${RESPONSE_LEN}"
@@ -106,6 +107,7 @@ sdpo_math_build_common_overrides() {
     actor_max_token_len="${ACTOR_LEN}"
     actor_rollout_ref.actor.ppo_mini_batch_size="${TRAIN_BS}"
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu="${ACTOR_LEN}"
+    actor_rollout_ref.actor.data_loader_seed="${SEED:-42}"
     actor_rollout_ref.rollout.n="${ROLLOUT_N}"
     actor_rollout_ref.rollout.agent.num_workers="${AGENT_WORKERS}"
     actor_rollout_ref.rollout.max_model_len="${MODEL_LEN}"
@@ -117,6 +119,7 @@ sdpo_math_build_common_overrides() {
     actor_rollout_ref.rollout.val_kwargs.temperature=0.0
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu="${MODEL_LEN}"
     actor_rollout_ref.actor.self_distillation.max_reprompt_len="${REPROMPT_LEN}"
+    critic.data_loader_seed="${SEED:-42}"
   )
 }
 

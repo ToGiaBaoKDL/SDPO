@@ -43,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--phase", default="pilot")
     parser.add_argument("--profile", default="fast")
     parser.add_argument("--steps", default="1")
+    parser.add_argument("--exp-suffix")
     return parser.parse_args()
 
 
@@ -50,9 +51,10 @@ def main() -> None:
     args = parse_args()
     missing_files: list[str] = []
     missing_snippets: list[str] = []
+    exp_suffix = args.exp_suffix or f"{args.phase}_{args.profile}_{args.steps}_seed42"
 
     for variant, snippets in EXPECTED_SNIPPETS.items():
-        path = args.log_dir / f"{variant}_{args.phase}_{args.profile}_{args.steps}.log"
+        path = args.log_dir / f"{variant}_{exp_suffix}.log"
         if not path.exists():
             missing_files.append(str(path))
             continue

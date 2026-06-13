@@ -9,11 +9,36 @@ PYTHON_BIN="${PYTHON:-python3}"
 
 echo "[1/5] Checking shell script syntax"
 bash -n \
+  experiments/math/math_env.sh \
+  experiments/math/setup_math_notebook.sh \
   experiments/math/run_sdpo_math_benchmark.sh \
   experiments/math/run_sdpo_math_vanilla.sh \
   experiments/math/run_sdpo_math_reliability.sh \
   experiments/math/run_sdpo_math_smoke.sh
-"${PYTHON_BIN}" -m py_compile experiments/math/validate_benchmark_dryrun.py
+"${PYTHON_BIN}" -m py_compile \
+  experiments/math/preflight_phase.py \
+  experiments/math/check_phase_report_ready.py \
+  experiments/math/inspect_phase_logs.py \
+  experiments/math/summarize_phase_results.py \
+  experiments/math/verify_hf_models.py \
+  experiments/math/write_phase_manifest.py \
+  experiments/math/validate_benchmark_dryrun.py
+"${PYTHON_BIN}" - <<'PY'
+from pathlib import Path
+
+expected_defaults = {
+    "experiments/math/run_sdpo_math_smoke.sh": "Qwen/Qwen2.5-0.5B-Instruct",
+    "experiments/math/run_sdpo_math_vanilla.sh": "Qwen/Qwen3.5-9B",
+    "experiments/math/run_sdpo_math_reliability.sh": "Qwen/Qwen3.5-9B",
+}
+for path, expected in expected_defaults.items():
+    text = Path(path).read_text(encoding="utf-8")
+    assert expected in text, f"{path} missing default {expected}"
+
+runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding="utf-8")
+for expected in ["Qwen/Qwen2.5-0.5B-Instruct", "Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B"]:
+    assert expected in runner, f"benchmark runner missing model default {expected}"
+PY
 
 echo "[2/5] Checking YAML config"
 "${PYTHON_BIN}" - <<'PY'
@@ -23,6 +48,8 @@ with open("verl/trainer/config/sdpo_math_l40s.yaml", encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
 
 assert cfg["actor_rollout_ref"]["actor"]["policy_loss"]["loss_mode"] == "sdpo"
+assert cfg["actor_rollout_ref"]["model"]["path"] == "Qwen/Qwen3.5-9B"
+assert cfg["critic"]["model"]["path"] == "Qwen/Qwen3.5-9B"
 assert cfg["actor_rollout_ref"]["model"]["lora_rank"] > 0
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_weighting"] is False
 assert cfg["trainer"]["n_gpus_per_node"] == 2
@@ -130,10 +157,13 @@ PHASE=pilot \
 RUN_PROFILE=fast \
 TRAIN_STEPS=1 \
 VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability" \
+RUN_TAG=cpu_pipeline_dryrun \
+EXP_SUFFIX=cpu_pipeline_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun" \
 bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_cpu_pipeline_dryrun.log
 
 "${PYTHON_BIN}" experiments/math/validate_benchmark_dryrun.py \
-  --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun"
+  --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun" \
+  --exp-suffix cpu_pipeline_dryrun_seed42
 
 echo "CPU pipeline checks passed"

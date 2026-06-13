@@ -5,12 +5,12 @@ Use this in a notebook cloned at `/root/SDPO` with 2x 24GB GPUs, for example L4 
 Run model order:
 
 1. Smoke/debug model: `Qwen/Qwen2.5-0.5B-Instruct`
-2. 24GB-GPU thesis/debug target model: `Qwen/Qwen2.5-1.5B-Instruct`
-3. Stretch target after the 1.5B path passes: `Qwen/Qwen2.5-7B-Instruct`
+2. Scale-decision model: `Qwen/Qwen3.5-4B`
+3. Thesis model: `Qwen/Qwen3.5-9B`
 
-Do not start with the config default `Qwen/Qwen3.5-9B` for first testing. It is
-a multimodal model, so it adds avoidable risk while validating a text-only math
-training pipeline.
+The math config and thesis phase default to `Qwen/Qwen3.5-9B`.
+Use the 0.5B model for smoke tests, the 4B model for scale-decision runs,
+and the 9B model for the main thesis path.
 
 The default path uses `attn_implementation=sdpa` so setup is fast and stable on L4/A10.
 Do not build FlashAttention for this test run. FlashAttention is an optional speed
@@ -184,7 +184,9 @@ source .venv/bin/activate
 source experiments/math/common_quiet_env.sh
 
 export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
-export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+export SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3.5-4B}"
+export THESIS_MODEL_PATH="${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}"
+export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-$SCALE_MODEL_PATH}"
 
 nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv
 
@@ -208,7 +210,7 @@ print("vllm:", vllm.__version__)
 assert torch.cuda.is_available(), "CUDA is not visible"
 assert torch.cuda.device_count() >= 2, "Expected at least 2 visible GPUs"
 
-for model_id in [os.environ["SMOKE_MODEL_PATH"], os.environ["TARGET_MODEL_PATH"]]:
+for model_id in [os.environ["SMOKE_MODEL_PATH"], os.environ["SCALE_MODEL_PATH"], os.environ["THESIS_MODEL_PATH"]]:
     info = model_info(model_id)
     print("hf_model_ok:", info.modelId)
 PY
@@ -341,10 +343,14 @@ export TOKENIZERS_PARALLELISM=false
 export CUDA_VISIBLE_DEVICES=0,1
 
 export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
-export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+export SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3.5-4B}"
+export THESIS_MODEL_PATH="${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}"
+export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-$SCALE_MODEL_PATH}"
 
 echo "smoke_model=$SMOKE_MODEL_PATH"
-echo "target_model=$TARGET_MODEL_PATH"
+echo "scale_model=$SCALE_MODEL_PATH"
+echo "thesis_model=$THESIS_MODEL_PATH"
+echo "target_model_for_tests=$TARGET_MODEL_PATH"
 
 ## 8. Base Model Validation Smoke
 
@@ -423,7 +429,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
 
 echo "model=$MODEL_PATH"
 ray stop --force >/dev/null 2>&1 || true
@@ -497,12 +503,12 @@ for variant in vanilla reliability; do
     data.filter_overlong_prompts_workers=1
 done
 
-## 11. Target-Model SDPO Smoke Tests
+## 11. Scale-Model SDPO Smoke Tests
 
 %%bash
 set -euo pipefail
 
-echo "== 11. Target-model SDPO smoke tests =="
+echo "== 11. Scale-model SDPO smoke tests =="
 cd /root/SDPO
 source .venv/bin/activate
 source experiments/math/common_quiet_env.sh
@@ -513,12 +519,12 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
 
 echo "model=$MODEL_PATH"
 
 for variant in vanilla reliability; do
-  echo "-- target_smoke_variant=$variant"
+  echo "-- scale_smoke_variant=$variant"
   ray stop --force >/dev/null 2>&1 || true
   bash experiments/math/run_sdpo_math_smoke.sh "$variant" \
     actor_rollout_ref.model.use_remove_padding=False \
@@ -546,7 +552,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
 export TRAIN_MAX_SAMPLES=128
 export VAL_MAX_SAMPLES=64
 export TOTAL_TRAINING_STEPS=5
@@ -582,14 +588,14 @@ do
     actor_rollout_ref.actor.self_distillation.max_reprompt_len=2048
 done
 
-## 13. Full Training
+## 13. Scale-Model Full Training Debug
 
-Only run this after sections 0-12 pass.
+Only run this after sections 0-12 pass. For thesis benchmarking, use `SDPO_MATH_PHASE_RUNBOOK.md` Phase 4 instead.
 
 %%bash
 set -euo pipefail
 
-echo "== 13. Full training =="
+echo "== 13. Scale-model full training debug =="
 cd /root/SDPO
 source .venv/bin/activate
 source experiments/math/common_quiet_env.sh
@@ -600,7 +606,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
 export TRAIN_MAX_SAMPLES=-1
 export VAL_MAX_SAMPLES=-1
 export TOTAL_TRAINING_STEPS=null
@@ -699,7 +705,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
 
 ray stop --force >/dev/null 2>&1 || true
 bash experiments/math/run_sdpo_math_smoke.sh reliability \
