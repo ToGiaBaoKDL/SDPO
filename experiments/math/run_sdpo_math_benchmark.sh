@@ -14,7 +14,8 @@ fi
 PHASE="${PHASE:-pilot}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 LOGGER="${LOGGER:-[\"console\"]}"
-VARIANTS="${VARIANTS:-base_model base_rl sdpo_vanilla sdpo_safe_feedback sdpo_reliability}"
+VARIANTS="${VARIANTS:-base_model base_rl sdpo_vanilla sdpo_reliability}"
+DRY_RUN="${DRY_RUN:-0}"
 
 case "${PHASE}" in
   pilot)
@@ -28,7 +29,7 @@ case "${PHASE}" in
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Pilot}"
     ;;
-  ablation)
+  scale_decision|ablation)
     RUN_PROFILE="${RUN_PROFILE:-balanced}"
     MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
     TRAIN_STEPS="${TRAIN_STEPS:-50}"
@@ -46,14 +47,14 @@ case "${PHASE}" in
         VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"
         ;;
       *)
-        echo "PHASE=ablation supports RUN_PROFILE=fast, balanced, or quality." >&2
+        echo "PHASE=scale_decision supports RUN_PROFILE=fast, balanced, or quality." >&2
         exit 1
         ;;
     esac
     EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
     SAVE_FREQ="${SAVE_FREQ:--1}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
-    GROUP_NAME="${GROUP_NAME:-SDPO-Math-Ablation}"
+    GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-Decision}"
     ;;
   thesis)
     RUN_PROFILE="${RUN_PROFILE:-quality}"
@@ -78,7 +79,7 @@ case "${PHASE}" in
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-7B}"
     ;;
   *)
-    echo "Unknown PHASE=${PHASE}. Use pilot, ablation, thesis, or scale_7b." >&2
+    echo "Unknown PHASE=${PHASE}. Use pilot, scale_decision, thesis, or scale_7b." >&2
     exit 1
     ;;
 esac
@@ -92,19 +93,28 @@ mkdir -p "${LOG_DIR}"
 
 sdpo_math_prepare_phase_run "${RUN_PROFILE}" "${LOG_DIR}"
 
-echo "phase=${PHASE} model=${MODEL_PATH} variants=${VARIANTS}"
+echo "phase=${PHASE} model=${MODEL_PATH} variants=${VARIANTS} dry_run=${DRY_RUN}"
 echo "steps=${TRAIN_STEPS} train_max=${TRAIN_MAX_SAMPLES} val_max=${VAL_MAX_SAMPLES} eval_freq=${EVAL_FREQ} save_freq=${SAVE_FREQ}"
 echo "logs=${LOG_DIR}"
 
 run_with_log() {
   local exp_name="$1"
   shift
+  if [[ "${DRY_RUN}" == "1" ]]; then
+    {
+      printf "DRY_RUN command:"
+      printf " %q" "$@"
+      printf "\n"
+    } | tee "${LOG_DIR}/${exp_name}.log"
+    return 0
+  fi
   ray stop --force >/dev/null 2>&1 || true
   "$@" 2>&1 | tee "${LOG_DIR}/${exp_name}.log"
 }
 
 run_base_model_val() {
   local exp_name="$1"
+  shift
   run_with_log "${exp_name}" \
     python3 -m verl.trainer.main_ppo \
       --config-name sdpo_math_l40s \
@@ -130,6 +140,7 @@ run_base_model_val() {
 
 run_base_rl() {
   local exp_name="$1"
+  shift
   run_with_log "${exp_name}" \
     python3 -m verl.trainer.main_ppo \
       --config-name sdpo_math_l40s \
@@ -155,21 +166,14 @@ run_base_rl() {
 run_sdpo_variant() {
   local variant="$1"
   local exp_name="$2"
-  local script=""
-  local include_feedback=False
+  shift 2
+  local include_feedback=True
   local reliability=False
 
   case "${variant}" in
     sdpo_vanilla)
-      script="${SCRIPT_DIR}/run_sdpo_math_vanilla.sh"
-      ;;
-    sdpo_safe_feedback)
-      script="${SCRIPT_DIR}/run_sdpo_math_safe_feedback.sh"
-      include_feedback=True
       ;;
     sdpo_reliability)
-      script="${SCRIPT_DIR}/run_sdpo_math_reliability.sh"
-      include_feedback=True
       reliability=True
       ;;
     *)
@@ -178,25 +182,26 @@ run_sdpo_variant() {
       ;;
   esac
 
-  ray stop --force >/dev/null 2>&1 || true
-  MODEL_PATH="${MODEL_PATH}" \
-  EXP_NAME="${exp_name}" \
-  TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES}" \
-  VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES}" \
-  TOTAL_TRAINING_STEPS="${TRAIN_STEPS}" \
-  LOGGER="${LOGGER}" \
-  bash "${script}" \
-    trainer.group_name="${GROUP_NAME}" \
-    trainer.val_before_train="${VAL_BEFORE_TRAIN}" \
-    trainer.test_freq="${EVAL_FREQ}" \
-    trainer.save_freq="${SAVE_FREQ}" \
-    actor_rollout_ref.actor.policy_loss.loss_mode=sdpo \
-    actor_rollout_ref.actor.self_distillation.include_environment_feedback="${include_feedback}" \
-    actor_rollout_ref.actor.self_distillation.reliability_weighting="${reliability}" \
-    "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
-    "${COMMON_OVERRIDES[@]}" \
-    "$@" \
-    2>&1 | tee "${LOG_DIR}/${exp_name}.log"
+  run_with_log "${exp_name}" \
+    python3 -m verl.trainer.main_ppo \
+      --config-name sdpo_math_l40s \
+      actor_rollout_ref.model.path="${MODEL_PATH}" \
+      critic.model.path="${MODEL_PATH}" \
+      trainer.experiment_name="${exp_name}" \
+      trainer.group_name="${GROUP_NAME}" \
+      trainer.logger="${LOGGER}" \
+      trainer.total_training_steps="${TRAIN_STEPS}" \
+      trainer.val_before_train="${VAL_BEFORE_TRAIN}" \
+      trainer.test_freq="${EVAL_FREQ}" \
+      trainer.save_freq="${SAVE_FREQ}" \
+      data.train_max_samples="${TRAIN_MAX_SAMPLES}" \
+      data.val_max_samples="${VAL_MAX_SAMPLES}" \
+      actor_rollout_ref.actor.policy_loss.loss_mode=sdpo \
+      actor_rollout_ref.actor.self_distillation.include_environment_feedback="${include_feedback}" \
+      actor_rollout_ref.actor.self_distillation.reliability_weighting="${reliability}" \
+      "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
+      "${COMMON_OVERRIDES[@]}" \
+      "$@"
 }
 
 for variant in ${VARIANTS}; do
@@ -210,11 +215,11 @@ for variant in ${VARIANTS}; do
     base_rl)
       run_base_rl "${exp_name}" "$@"
       ;;
-    sdpo_vanilla|sdpo_safe_feedback|sdpo_reliability)
+    sdpo_vanilla|sdpo_reliability)
       run_sdpo_variant "${variant}" "${exp_name}" "$@"
       ;;
     *)
-      echo "Unknown variant=${variant}. Valid: base_model base_rl sdpo_vanilla sdpo_safe_feedback sdpo_reliability." >&2
+      echo "Unknown variant=${variant}. Valid: base_model base_rl sdpo_vanilla sdpo_reliability." >&2
       exit 1
       ;;
   esac

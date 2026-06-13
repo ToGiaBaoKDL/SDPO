@@ -11,18 +11,17 @@ Validation in these phases uses `data/dapo_math_en/val.parquet`, the held-out DA
 
 ## Benchmark Variants
 
-There are 5 benchmark variants:
+There are 4 benchmark variants:
 
 - `base_model`: frozen base-model validation only. No training, no LoRA.
 - `base_rl`: trained GRPO/RL baseline with vanilla policy loss.
-- `sdpo_vanilla`: SDPO with successful sibling rollouts as teacher demonstrations.
-- `sdpo_safe_feedback`: SDPO plus safe math feedback when no successful demonstration exists.
-- `sdpo_reliability`: SDPO plus safe feedback plus reliability weighting.
+- `sdpo_vanilla`: feedback-enabled SDPO baseline. It uses successful sibling rollouts when available and safe math feedback when no successful demonstration exists.
+- `sdpo_reliability`: SDPO+ with safe feedback plus reliability weighting.
 
-Training phases run 4 trained variants: `base_rl`, `sdpo_vanilla`, `sdpo_safe_feedback`, and `sdpo_reliability`.
-The fifth variant, `base_model`, is an evaluation baseline.
+Training phases run 3 trained variants: `base_rl`, `sdpo_vanilla`, and `sdpo_reliability`.
+The fourth variant, `base_model`, is an evaluation baseline.
 
-`sdpo_vanilla` and `sdpo_safe_feedback` are not identical. They can behave the same for samples where SDPO already found a successful sibling rollout, because feedback is configured to be used only when no successful solution demonstration exists. Check `self_distillation/feedback_used_fraction`: if it is `0`, safe-feedback had no practical effect in that batch.
+Use `sdpo_vanilla` as the main SDPO baseline in thesis tables. `sdpo_reliability` is the SDPO+ thesis method. Because feedback is configured to be used only when no successful solution demonstration exists, monitor `self_distillation/feedback_used_fraction`: if it is `0`, feedback had no practical effect in that batch.
 
 ## Profiles
 
@@ -35,7 +34,7 @@ Recommended order:
 
 1. Phase 0: preflight.
 2. Phase 1: pilot, confirms all variants run.
-3. Phase 2: ablation, decides whether to scale.
+3. Phase 2: scale-decision benchmark.
 4. Phase 3: inspect logs.
 5. Phase 4: thesis 1.5B run.
 6. Phase 5: optional 7B run only after Phase 2/4 is stable.
@@ -61,8 +60,14 @@ export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 
 python - <<'PY'
 from pathlib import Path
+import re
 import pyarrow.parquet as pq
 import yaml
+
+
+def require_snippet(path: str, text: str, snippet: str) -> None:
+    if snippet not in text:
+        raise AssertionError(f"{path} is stale or inconsistent; missing: {snippet}")
 
 with open("verl/trainer/config/sdpo_math_l40s.yaml", encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
@@ -100,23 +105,45 @@ for snippet in [
     "AGENT_WORKERS=8",
     "actor_rollout_ref.rollout.val_kwargs.n=1",
 ]:
-    assert snippet in phase_common, snippet
+    require_snippet("experiments/math/phase_common.sh", phase_common, snippet)
 
 runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding="utf-8")
+variant_match = re.search(r'^VARIANTS="\$\{VARIANTS:-(?P<variants>[^"]+)\}"', runner, re.MULTILINE)
+expected_variants = ["base_model", "base_rl", "sdpo_vanilla", "sdpo_reliability"]
+if not variant_match:
+    raise AssertionError("experiments/math/run_sdpo_math_benchmark.sh is missing the VARIANTS default")
+actual_variants = variant_match.group("variants").split()
+if actual_variants != expected_variants:
+    raise AssertionError(
+        "experiments/math/run_sdpo_math_benchmark.sh has stale benchmark variants: "
+        f"actual={actual_variants}, expected={expected_variants}. "
+        "Run git pull in /root/SDPO or copy the latest benchmark script."
+    )
 for snippet in [
-    "base_model base_rl sdpo_vanilla sdpo_safe_feedback sdpo_reliability",
-    "PHASE=ablation",
-    "PHASE=thesis",
+    "scale_decision|ablation)",
+    "thesis)",
+    "scale_7b)",
+    "DRY_RUN",
     "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
 ]:
-    assert snippet in runner, snippet
+    require_snippet("experiments/math/run_sdpo_math_benchmark.sh", runner, snippet)
 
 print("phase0_ok")
 PY
 
+export DRY_RUN=1
+export PHASE=pilot
+export RUN_PROFILE=fast
+export TRAIN_STEPS=1
+export VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability"
+export LOG_DIR="$PROJECT_ROOT/logs/sdpo_math_phase/preflight_dryrun"
+
+bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_preflight_dryrun.log
+python experiments/math/validate_benchmark_dryrun.py --log-dir "$LOG_DIR"
+
 ## Phase 1. Pilot Test
 
-Purpose: confirm the full 5-variant benchmark shape runs cleanly.
+Purpose: confirm the full 4-variant benchmark shape runs cleanly.
 
 Default: `PHASE=pilot`, `RUN_PROFILE=fast`, `TRAIN_STEPS=10`.
 For a very quick test, set `VARIANTS="base_model base_rl sdpo_reliability" TRAIN_STEPS=3`.
@@ -140,23 +167,23 @@ export ULTRA_QUIET="${ULTRA_QUIET:-0}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
 
-## Phase 2. Scale-Decision Ablation
+## Phase 2. Scale-Decision Benchmark
 
 Purpose: useful comparison before spending on the final thesis run.
 
-Default: `PHASE=ablation`, `RUN_PROFILE=balanced`, `TRAIN_STEPS=50`.
+Default: `PHASE=scale_decision`, `RUN_PROFILE=balanced`, `TRAIN_STEPS=50`.
 Scale up if:
 
-- all 4 train variants finish without OOM or chunk errors;
+- all 3 train variants finish without OOM or chunk errors;
 - `base_rl` is stable;
 - SDPO variants log nonzero `self_distillation/reprompt_sample_fraction`;
-- `sdpo_safe_feedback` logs nonzero `self_distillation/feedback_used_fraction` at least sometimes;
-- `sdpo_reliability` logs reliability metrics and does not collapse reward versus SDPO vanilla.
+- `sdpo_vanilla` logs nonzero `self_distillation/feedback_used_fraction` at least sometimes;
+- `sdpo_reliability` logs reliability metrics and does not collapse reward versus `sdpo_vanilla`.
 
 %%bash
 set -euo pipefail
 
-echo "== Phase 2: scale-decision ablation =="
+echo "== Phase 2: scale-decision benchmark =="
 cd /root/SDPO
 source .venv/bin/activate
 
@@ -164,7 +191,7 @@ export PROJECT_ROOT="$PWD"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
 export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
-export PHASE="${PHASE:-ablation}"
+export PHASE="${PHASE:-scale_decision}"
 export RUN_PROFILE="${RUN_PROFILE:-balanced}"
 export MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
 export TRAIN_STEPS="${TRAIN_STEPS:-50}"
@@ -241,7 +268,7 @@ find checkpoints/sdpo_math -maxdepth 3 -type d -name 'global_step_*' 2>/dev/null
 Purpose: final 1.5B thesis comparison on 2x L4/A10/L40S.
 
 Default: `PHASE=thesis`, `RUN_PROFILE=quality`, `TRAIN_STEPS=300`, validation every `100` steps.
-This runs the frozen `base_model` evaluation plus the 4 train variants.
+This runs the frozen `base_model` evaluation plus the 3 train variants.
 
 %%bash
 set -euo pipefail
@@ -299,8 +326,8 @@ Run only training variants:
 set -euo pipefail
 cd /root/SDPO
 source .venv/bin/activate
-export PHASE=ablation
-export VARIANTS="base_rl sdpo_vanilla sdpo_safe_feedback sdpo_reliability"
+export PHASE=scale_decision
+export VARIANTS="base_rl sdpo_vanilla sdpo_reliability"
 bash experiments/math/run_sdpo_math_benchmark.sh
 
 Run only the strongest SDPO+ variant:

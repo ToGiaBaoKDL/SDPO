@@ -11,14 +11,9 @@ shift || true
 
 case "${VARIANT}" in
   vanilla)
-    INCLUDE_FEEDBACK=False
-    RELIABILITY_WEIGHTING=False
-    EXP_NAME="${EXP_NAME:-sdpo_math_smoke_vanilla}"
-    ;;
-  safe)
     INCLUDE_FEEDBACK=True
     RELIABILITY_WEIGHTING=False
-    EXP_NAME="${EXP_NAME:-sdpo_math_smoke_safe_feedback}"
+    EXP_NAME="${EXP_NAME:-sdpo_math_smoke_vanilla}"
     ;;
   reliability)
     INCLUDE_FEEDBACK=True
@@ -26,7 +21,7 @@ case "${VARIANT}" in
     EXP_NAME="${EXP_NAME:-sdpo_math_smoke_reliability}"
     ;;
   *)
-    echo "Usage: $0 [vanilla|safe|reliability] [hydra overrides...]" >&2
+    echo "Usage: $0 [vanilla|reliability] [hydra overrides...]" >&2
     exit 1
     ;;
 esac
@@ -77,6 +72,7 @@ python3 -m verl.trainer.main_ppo \
   actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \
   actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=3072 \
   actor_rollout_ref.actor.self_distillation.max_reprompt_len=2048 \
+  actor_rollout_ref.actor.policy_loss.loss_mode=sdpo \
   actor_rollout_ref.actor.self_distillation.include_environment_feedback="${INCLUDE_FEEDBACK}" \
   actor_rollout_ref.actor.self_distillation.reliability_weighting="${RELIABILITY_WEIGHTING}" \
   "$@"

@@ -7,14 +7,15 @@ export PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${PROJECT_ROOT}"
 PYTHON_BIN="${PYTHON:-python3}"
 
-echo "[1/4] Checking shell script syntax"
+echo "[1/5] Checking shell script syntax"
 bash -n \
+  experiments/math/run_sdpo_math_benchmark.sh \
   experiments/math/run_sdpo_math_vanilla.sh \
-  experiments/math/run_sdpo_math_safe_feedback.sh \
   experiments/math/run_sdpo_math_reliability.sh \
   experiments/math/run_sdpo_math_smoke.sh
+"${PYTHON_BIN}" -m py_compile experiments/math/validate_benchmark_dryrun.py
 
-echo "[2/4] Checking YAML config"
+echo "[2/5] Checking YAML config"
 "${PYTHON_BIN}" - <<'PY'
 import yaml
 
@@ -29,7 +30,7 @@ assert cfg["reward_manager"]["name"] == "naive"
 print("config ok")
 PY
 
-echo "[3/4] Checking prepared DAPO-Math parquet"
+echo "[3/5] Checking prepared DAPO-Math parquet"
 "${PYTHON_BIN}" - <<'PY'
 from pathlib import Path
 
@@ -61,7 +62,7 @@ for split, expected_min_rows in [("train", 1), ("val", 1)]:
     print(split, len(rows), "rows ok")
 PY
 
-echo "[4/4] Checking math feedback behavior with optional math-verify"
+echo "[4/5] Checking math feedback behavior with optional math-verify"
 "${PYTHON_BIN}" - <<'PY'
 import importlib.util
 
@@ -122,5 +123,17 @@ if math_verify_available:
     symbolic = math_feedback.compute_score(r"Reasoning... \boxed{1+1}", "2", {"feedback_mode": "safe"})
     print("math_verify symbolic smoke:", symbolic["score"], symbolic["pred"])
 PY
+
+echo "[5/5] Checking benchmark variant dry-run"
+DRY_RUN=1 \
+PHASE=pilot \
+RUN_PROFILE=fast \
+TRAIN_STEPS=1 \
+VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability" \
+LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun" \
+bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_cpu_pipeline_dryrun.log
+
+"${PYTHON_BIN}" experiments/math/validate_benchmark_dryrun.py \
+  --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun"
 
 echo "CPU pipeline checks passed"

@@ -124,7 +124,6 @@ from pathlib import Path
 script_paths = [
     Path("experiments/math/run_sdpo_math_smoke.sh"),
     Path("experiments/math/run_sdpo_math_vanilla.sh"),
-    Path("experiments/math/run_sdpo_math_safe_feedback.sh"),
     Path("experiments/math/run_sdpo_math_reliability.sh"),
 ]
 
@@ -485,7 +484,7 @@ export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
 
 echo "model=$MODEL_PATH"
 
-for variant in vanilla safe reliability; do
+for variant in vanilla reliability; do
   echo "-- smoke_variant=$variant"
   ray stop --force >/dev/null 2>&1 || true
   bash experiments/math/run_sdpo_math_smoke.sh "$variant" \
@@ -518,7 +517,7 @@ export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen2.5-1.5B-Instruct}"
 
 echo "model=$MODEL_PATH"
 
-for variant in vanilla safe reliability; do
+for variant in vanilla reliability; do
   echo "-- target_smoke_variant=$variant"
   ray stop --force >/dev/null 2>&1 || true
   bash experiments/math/run_sdpo_math_smoke.sh "$variant" \
@@ -557,7 +556,6 @@ echo "model=$MODEL_PATH"
 
 for script in \
   experiments/math/run_sdpo_math_vanilla.sh \
-  experiments/math/run_sdpo_math_safe_feedback.sh \
   experiments/math/run_sdpo_math_reliability.sh
 do
   echo "-- train_script=$script"
@@ -647,7 +645,6 @@ python3 -m verl.trainer.main_ppo \
 
 for script in \
   experiments/math/run_sdpo_math_vanilla.sh \
-  experiments/math/run_sdpo_math_safe_feedback.sh \
   experiments/math/run_sdpo_math_reliability.sh
 do
   echo "-- full_train_script=$script"

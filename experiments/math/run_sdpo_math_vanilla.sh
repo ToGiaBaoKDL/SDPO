@@ -41,5 +41,7 @@ python3 -m verl.trainer.main_ppo \
   data.filter_overlong_prompts_workers="${FILTER_OVERLONG_PROMPTS_WORKERS}" \
   data.train_max_samples="${TRAIN_MAX_SAMPLES}" \
   data.val_max_samples="${VAL_MAX_SAMPLES}" \
-  actor_rollout_ref.actor.self_distillation.include_environment_feedback=False \
+  actor_rollout_ref.actor.policy_loss.loss_mode=sdpo \
+  actor_rollout_ref.actor.self_distillation.include_environment_feedback=True \
+  actor_rollout_ref.actor.self_distillation.reliability_weighting=False \
   "$@"
