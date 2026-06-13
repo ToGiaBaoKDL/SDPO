@@ -14,14 +14,16 @@ fi
 PHASE="${PHASE:-pilot}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 LOGGER="${LOGGER:-[\"console\"]}"
+CONFIG_NAME="${CONFIG_NAME:-sdpo_math_a100}"
 VARIANTS="${VARIANTS:-base_model base_rl sdpo_vanilla sdpo_reliability}"
 DRY_RUN="${DRY_RUN:-0}"
 SEED="${SEED:-42}"
+VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-1}"
 
 case "${PHASE}" in
   pilot)
     RUN_PROFILE="${RUN_PROFILE:-fast}"
-    MODEL_PATH="${MODEL_PATH:-${PILOT_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}}"
+    MODEL_PATH="${MODEL_PATH:-${PILOT_MODEL_PATH:-Qwen/Qwen3.5-2B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-10}"
     TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"
     VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
@@ -68,7 +70,7 @@ case "${PHASE}" in
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-True}"
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Thesis}"
     ;;
-  scale_9b|scale_7b)
+  scale_9b)
     RUN_PROFILE="${RUN_PROFILE:-high_mem_9b}"
     MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-300}"
@@ -100,8 +102,13 @@ echo "steps=${TRAIN_STEPS} train_max=${TRAIN_MAX_SAMPLES} val_max=${VAL_MAX_SAMP
 echo "exp_suffix=${EXP_SUFFIX}"
 echo "logs=${LOG_DIR}"
 
+if [[ "${DRY_RUN}" != "1" && "${VERIFY_PHASE_MODEL}" == "1" ]]; then
+  python3 "${SCRIPT_DIR}/verify_hf_models.py" --models "${MODEL_PATH}"
+fi
+
 python3 "${SCRIPT_DIR}/write_phase_manifest.py" \
   --output "${LOG_DIR}/manifest.json" \
+  --config-name "${CONFIG_NAME}" \
   --phase "${PHASE}" \
   --profile "${RUN_PROFILE}" \
   --model "${MODEL_PATH}" \
@@ -135,7 +142,7 @@ run_base_model_val() {
   shift
   run_with_log "${exp_name}" \
     python3 -m verl.trainer.main_ppo \
-      --config-name sdpo_math_l40s \
+      --config-name "${CONFIG_NAME}" \
       actor_rollout_ref.model.path="${MODEL_PATH}" \
       critic.model.path="${MODEL_PATH}" \
       trainer.experiment_name="${exp_name}" \
@@ -144,6 +151,7 @@ run_base_model_val() {
       trainer.val_before_train=True \
       trainer.val_only=True \
       trainer.save_freq=-1 \
+      trainer.validation_data_dir="${LOG_DIR}/validation/${exp_name}" \
       data.train_max_samples=8 \
       data.val_max_samples="${VAL_MAX_SAMPLES}" \
       actor_rollout_ref.model.lora_rank=0 \
@@ -161,7 +169,7 @@ run_base_rl() {
   shift
   run_with_log "${exp_name}" \
     python3 -m verl.trainer.main_ppo \
-      --config-name sdpo_math_l40s \
+      --config-name "${CONFIG_NAME}" \
       actor_rollout_ref.model.path="${MODEL_PATH}" \
       critic.model.path="${MODEL_PATH}" \
       trainer.experiment_name="${exp_name}" \
@@ -171,6 +179,7 @@ run_base_rl() {
       trainer.val_before_train="${VAL_BEFORE_TRAIN}" \
       trainer.test_freq="${EVAL_FREQ}" \
       trainer.save_freq="${SAVE_FREQ}" \
+      trainer.validation_data_dir="${LOG_DIR}/validation/${exp_name}" \
       data.train_max_samples="${TRAIN_MAX_SAMPLES}" \
       data.val_max_samples="${VAL_MAX_SAMPLES}" \
       actor_rollout_ref.actor.policy_loss.loss_mode=vanilla \
@@ -202,7 +211,7 @@ run_sdpo_variant() {
 
   run_with_log "${exp_name}" \
     python3 -m verl.trainer.main_ppo \
-      --config-name sdpo_math_l40s \
+      --config-name "${CONFIG_NAME}" \
       actor_rollout_ref.model.path="${MODEL_PATH}" \
       critic.model.path="${MODEL_PATH}" \
       trainer.experiment_name="${exp_name}" \
@@ -212,6 +221,7 @@ run_sdpo_variant() {
       trainer.val_before_train="${VAL_BEFORE_TRAIN}" \
       trainer.test_freq="${EVAL_FREQ}" \
       trainer.save_freq="${SAVE_FREQ}" \
+      trainer.validation_data_dir="${LOG_DIR}/validation/${exp_name}" \
       data.train_max_samples="${TRAIN_MAX_SAMPLES}" \
       data.val_max_samples="${VAL_MAX_SAMPLES}" \
       actor_rollout_ref.actor.policy_loss.loss_mode=sdpo \

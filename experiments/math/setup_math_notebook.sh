@@ -5,24 +5,53 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${PROJECT_ROOT}"
 
-PYTHON_VERSION="${PYTHON_VERSION:-3.10}"
+SDPO_PYTHON_VERSION="${SDPO_PYTHON_VERSION:-3.12}"
+ALLOW_UNTESTED_PYTHON="${ALLOW_UNTESTED_PYTHON:-0}"
 INSTALL_MATH_VERIFY="${INSTALL_MATH_VERIFY:-1}"
 PREPARE_DATA="${PREPARE_DATA:-1}"
 RUN_CPU_CHECK="${RUN_CPU_CHECK:-1}"
 VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-1}"
+
+if [[ "${SDPO_PYTHON_VERSION}" != 3.12* && "${ALLOW_UNTESTED_PYTHON}" != "1" ]]; then
+  cat >&2 <<EOF
+Unsupported SDPO_PYTHON_VERSION=${SDPO_PYTHON_VERSION}.
+Use SDPO_PYTHON_VERSION=3.12 for the SDPO-Math notebook environment, or set
+ALLOW_UNTESTED_PYTHON=1 if you intentionally want to test another Python.
+EOF
+  exit 1
+fi
 
 export SDPO_SKIP_VENV=1
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/math_env.sh"
 
 echo "repo=${PROJECT_ROOT}"
-echo "python_version=${PYTHON_VERSION}"
+echo "sdpo_python_version=${SDPO_PYTHON_VERSION}"
 echo "install_math_verify=${INSTALL_MATH_VERIFY}"
 echo "prepare_data=${PREPARE_DATA}"
 echo "verify_hf_models=${VERIFY_HF_MODELS}"
 
+if [[ -x .venv/bin/python ]]; then
+  EXISTING_PYTHON_VERSION="$(
+    .venv/bin/python - <<'PY'
+import platform
+print(platform.python_version())
+PY
+  )"
+  if [[ "${EXISTING_PYTHON_VERSION}" != 3.12* && "${ALLOW_UNTESTED_PYTHON}" != "1" ]]; then
+    cat >&2 <<EOF
+Existing .venv uses Python ${EXISTING_PYTHON_VERSION}.
+Remove it and re-run setup:
+  rm -rf .venv
+  export SDPO_PYTHON_VERSION=3.12
+  bash experiments/math/setup_math_notebook.sh
+EOF
+    exit 1
+  fi
+fi
+
 python3 -m pip install -q -U uv
-uv venv .venv --python "${PYTHON_VERSION}"
+uv venv .venv --python "${SDPO_PYTHON_VERSION}"
 
 unset SDPO_SKIP_VENV
 # shellcheck disable=SC1091

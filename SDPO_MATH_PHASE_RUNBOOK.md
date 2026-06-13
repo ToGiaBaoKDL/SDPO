@@ -11,7 +11,7 @@ Validation in these phases uses `data/dapo_math_en/val.parquet`, the held-out DA
 
 ## Required Setup
 
-Use a fresh clone at `/root/SDPO` and pull the latest code before running phases. The setup script creates a Python 3.10 uv venv, installs the project with vLLM, installs `math-verify`, verifies the Hugging Face model ids, prepares the English DAPO-Math split if missing, and runs CPU/data checks.
+Use a fresh clone at `/root/SDPO` and pull the latest code before running phases. The setup script creates a Python 3.12 uv venv, installs the project with vLLM, installs `math-verify`, verifies the Hugging Face model ids and Transformers architecture support, prepares the English DAPO-Math split if missing, and runs CPU/data checks.
 
 Run once per notebook VM:
 
@@ -22,9 +22,13 @@ echo "== Setup SDPO-Math notebook =="
 cd /root/SDPO
 git pull
 chmod +x experiments/math/*.sh experiments/math/*.py
+unset PYTHON_VERSION
+export SDPO_PYTHON_VERSION=3.12
 bash experiments/math/setup_math_notebook.sh
 
-Useful setup flags: `PREPARE_DATA=0` skips data creation, `RUN_CPU_CHECK=0` skips CPU checks, `VERIFY_HF_MODELS=0` skips Hugging Face model-id checks, and `INSTALL_MATH_VERIFY=0` skips `math-verify` installation. For thesis runs, keep `INSTALL_MATH_VERIFY=1`.
+Useful setup flags: `PREPARE_DATA=0` skips data creation, `RUN_CPU_CHECK=0` skips CPU checks, `VERIFY_HF_MODELS=0` skips Hugging Face model and architecture checks, and `INSTALL_MATH_VERIFY=0` skips `math-verify` installation. For thesis runs, keep `INSTALL_MATH_VERIFY=1`.
+
+The setup script intentionally uses `SDPO_PYTHON_VERSION`, not the generic notebook variable `PYTHON_VERSION`. Use Python 3.12 unless you intentionally set `ALLOW_UNTESTED_PYTHON=1`.
 
 ## Shared Cell Prefix
 
@@ -34,11 +38,18 @@ That helper activates `.venv` if it exists, sets `PROJECT_ROOT`, `PYTHONPATH`, `
 
 Model ladder:
 
-- Phase 1 pilot: `Qwen/Qwen2.5-0.5B-Instruct`.
+- Phase 1 pilot: `Qwen/Qwen3.5-2B`.
 - Phase 2 scale decision: `Qwen/Qwen3.5-4B`.
 - Phase 4 thesis: `Qwen/Qwen3.5-9B`.
 
-The public Qwen3.5 model ids verified for this runbook are `Qwen/Qwen3.5-4B` and `Qwen/Qwen3.5-9B`, not `*-Instruct`.
+The Qwen3.5 model ids targeted by this runbook are `Qwen/Qwen3.5-2B`, `Qwen/Qwen3.5-4B`, and `Qwen/Qwen3.5-9B`. They require a Transformers/vLLM stack that recognizes `model_type=qwen3_5`; `experiments/math/verify_hf_models.py` checks this before training.
+
+%%bash
+set -euo pipefail
+
+cd /root/SDPO
+source experiments/math/math_env.sh
+python experiments/math/verify_hf_models.py --models "$PILOT_MODEL_PATH" "$SCALE_MODEL_PATH" "$THESIS_MODEL_PATH"
 
 ## Benchmark Variants
 
@@ -56,10 +67,10 @@ Use `sdpo_vanilla` as the main SDPO baseline in thesis tables. `sdpo_reliability
 
 ## Profiles
 
-- `fast`: pilot profile for quick correctness checks. `train_batch_size=4`, `rollout.n=2`, `agent_workers=8`, response length `1024`.
-- `balanced`: scale-decision profile for Qwen3.5-4B. `train_batch_size=8`, `rollout.n=2`, `agent_workers=8`, response length `1536`.
-- `quality`: thesis profile for Qwen3.5-9B. `train_batch_size=8`, `rollout.n=4`, `agent_workers=8`, response length `1536`.
-- `high_mem_9b`: optional high-memory Qwen3.5-9B profile. `a100_7b` remains as a legacy alias.
+- `fast`: pilot profile for Qwen3.5-2B on 2x A100. `train_batch_size=16`, `rollout.n=4`, `agent_workers=16`, response length `1024`.
+- `balanced`: scale-decision profile for Qwen3.5-4B on 2x A100. `train_batch_size=16`, `rollout.n=4`, `agent_workers=16`, response length `1536`.
+- `quality`: thesis profile for Qwen3.5-9B on 2x A100. `train_batch_size=16`, `rollout.n=4`, `agent_workers=16`, response length `2048`.
+- `high_mem_9b`: optional higher-throughput Qwen3.5-9B profile. It raises train batch size to `24`, agent workers to `24`, and vLLM batched tokens to `49152`.
 
 Recommended order:
 
@@ -214,6 +225,7 @@ Required from this runbook:
 
 - `logs/sdpo_math_phase/<run>/manifest.json` exists and records git commit, model, phase, profile, seed, variants, train/val sample counts, eval frequency, and save frequency.
 - `logs/sdpo_math_phase/<run>/summary.csv` exists after Phase 3.
+- `logs/sdpo_math_phase/<run>/validation/<variant>_<exp_suffix>/*.jsonl` exists for every variant.
 - All 4 variants are present: `base_model`, `base_rl`, `sdpo_vanilla`, `sdpo_reliability`.
 - Main result column is `val-core/math_dapo/acc/mean@1` from the held-out DAPO-Math English validation split.
 - Diagnostic columns include format error, truncation, SDPO reprompt fraction, SDPO feedback-used fraction, and reliability weight mean.

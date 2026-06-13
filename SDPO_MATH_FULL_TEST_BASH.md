@@ -1,18 +1,26 @@
 # SDPO-Math Full Notebook Test
 
-Use this in a notebook cloned at `/root/SDPO` with 2x 24GB GPUs, for example L4 or A10.
+Use this in a notebook cloned at `/root/SDPO` with 2x A100 GPUs.
 
 Run model order:
 
-1. Smoke/debug model: `Qwen/Qwen2.5-0.5B-Instruct`
+1. Smoke/debug model: `Qwen/Qwen3.5-2B`
 2. Scale-decision model: `Qwen/Qwen3.5-4B`
 3. Thesis model: `Qwen/Qwen3.5-9B`
 
 The math config and thesis phase default to `Qwen/Qwen3.5-9B`.
-Use the 0.5B model for smoke tests, the 4B model for scale-decision runs,
+Use the 2B model for smoke tests, the 4B model for scale-decision runs,
 and the 9B model for the main thesis path.
 
-The default path uses `attn_implementation=sdpa` so setup is fast and stable on L4/A10.
+Qwen3.5 requires an installed Transformers/vLLM stack that recognizes
+`model_type=qwen3_5`. The runtime sanity cell uses
+`experiments/math/verify_hf_models.py` to check both Hugging Face access and
+Transformers `AutoConfig` compatibility before any Ray/FSDP training starts.
+If that check fails, upgrade the model stack and re-run the verifier before
+starting GPU training.
+
+The default path uses `attn_implementation=sdpa` so setup is fast and avoids
+local FlashAttention builds.
 Do not build FlashAttention for this test run. FlashAttention is an optional speed
 optimization, not required for SDPO correctness. This no-FlashAttention profile also
 uses `use_remove_padding=False`, because remove-padding imports `flash_attn.bert_padding`.
@@ -46,7 +54,7 @@ chmod +x experiments/math/*.sh
 echo "repo=$PROJECT_ROOT"
 git rev-parse --short HEAD || true
 
-## 1. Create Python 3.10 Environment
+## 1. Create Python 3.12 Environment
 
 %%bash
 set -euo pipefail
@@ -55,7 +63,9 @@ echo "== 1. Python env =="
 cd /root/SDPO
 
 python3 -m pip install -q -U uv
-uv venv .venv --python 3.10
+unset PYTHON_VERSION
+export SDPO_PYTHON_VERSION=3.12
+uv venv .venv --python 3.12
 source .venv/bin/activate
 source experiments/math/common_quiet_env.sh
 
@@ -97,7 +107,7 @@ source experiments/math/common_quiet_env.sh
 python - <<'PY'
 import yaml
 
-with open("verl/trainer/config/sdpo_math_l40s.yaml", encoding="utf-8") as f:
+with open("verl/trainer/config/sdpo_math_a100.yaml", encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
 
 actor_attn = cfg["actor_rollout_ref"]["model"]["override_config"]["attn_implementation"]
@@ -112,7 +122,7 @@ print("config_use_remove_padding:", use_remove_padding)
 print("config_data_workers:", {"dataloader": dataloader_workers, "filter": filter_workers})
 assert actor_attn == "sdpa", actor_attn
 assert critic_attn == "sdpa", critic_attn
-assert agent_workers == 2, agent_workers
+assert agent_workers == 16, agent_workers
 assert use_remove_padding is False, use_remove_padding
 assert dataloader_workers == 0, dataloader_workers
 assert filter_workers == 1, filter_workers
@@ -131,7 +141,6 @@ for path in script_paths:
     text = path.read_text(encoding="utf-8")
     assert 'source "${SCRIPT_DIR}/common_quiet_env.sh"' in text, path
     assert 'ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"' in text, path
-    assert 'AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-2}"' in text, path
     assert 'USE_REMOVE_PADDING="${USE_REMOVE_PADDING:-False}"' in text, path
     assert 'DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-0}"' in text, path
     assert 'FILTER_OVERLONG_PROMPTS_WORKERS="${FILTER_OVERLONG_PROMPTS_WORKERS:-1}"' in text, path
@@ -140,7 +149,16 @@ for path in script_paths:
     if hits:
         raise SystemExit(f"Unexpected FlashAttention reference in {path}: {hits}")
 
-config_text = Path("verl/trainer/config/sdpo_math_l40s.yaml").read_text(encoding="utf-8")
+smoke_text = Path("experiments/math/run_sdpo_math_smoke.sh").read_text(encoding="utf-8")
+assert 'AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-2}"' in smoke_text
+for path in [
+    Path("experiments/math/run_sdpo_math_vanilla.sh"),
+    Path("experiments/math/run_sdpo_math_reliability.sh"),
+]:
+    text = path.read_text(encoding="utf-8")
+    assert 'AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-16}"' in text, path
+
+config_text = Path("verl/trainer/config/sdpo_math_a100.yaml").read_text(encoding="utf-8")
 for term in ["flash_attention_2", "flash-attn", "flash_attn"]:
     if term in config_text:
         raise SystemExit(f"Unexpected FlashAttention reference in config: {term}")
@@ -183,7 +201,7 @@ cd /root/SDPO
 source .venv/bin/activate
 source experiments/math/common_quiet_env.sh
 
-export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
+export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3.5-2B}"
 export SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3.5-4B}"
 export THESIS_MODEL_PATH="${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}"
 export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-$SCALE_MODEL_PATH}"
@@ -194,10 +212,8 @@ python - <<'PY'
 import platform
 import torch
 import ray
-import transformers
 import vllm
-from huggingface_hub import model_info
-import os
+import transformers
 
 print("python:", platform.python_version())
 print("cuda_available:", torch.cuda.is_available())
@@ -209,11 +225,10 @@ print("vllm:", vllm.__version__)
 
 assert torch.cuda.is_available(), "CUDA is not visible"
 assert torch.cuda.device_count() >= 2, "Expected at least 2 visible GPUs"
-
-for model_id in [os.environ["SMOKE_MODEL_PATH"], os.environ["SCALE_MODEL_PATH"], os.environ["THESIS_MODEL_PATH"]]:
-    info = model_info(model_id)
-    print("hf_model_ok:", info.modelId)
 PY
+
+python experiments/math/verify_hf_models.py \
+  --models "$SMOKE_MODEL_PATH" "$SCALE_MODEL_PATH" "$THESIS_MODEL_PATH"
 
 ## 4. Math-Verify Reward Smoke
 
@@ -342,7 +357,7 @@ export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export TOKENIZERS_PARALLELISM=false
 export CUDA_VISIBLE_DEVICES=0,1
 
-export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
+export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3.5-2B}"
 export SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3.5-4B}"
 export THESIS_MODEL_PATH="${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}"
 export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-$SCALE_MODEL_PATH}"
@@ -368,13 +383,13 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
+export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3.5-2B}"
 
 echo "model=$MODEL_PATH"
 ray stop --force >/dev/null 2>&1 || true
 
 python3 -m verl.trainer.main_ppo \
-  --config-name sdpo_math_l40s \
+  --config-name sdpo_math_a100 \
   actor_rollout_ref.model.path="$MODEL_PATH" \
   actor_rollout_ref.model.use_remove_padding=False \
   actor_rollout_ref.model.override_config.attn_implementation=sdpa \
@@ -435,7 +450,7 @@ echo "model=$MODEL_PATH"
 ray stop --force >/dev/null 2>&1 || true
 
 python3 -m verl.trainer.main_ppo \
-  --config-name sdpo_math_l40s \
+  --config-name sdpo_math_a100 \
   actor_rollout_ref.model.path="$MODEL_PATH" \
   actor_rollout_ref.model.use_remove_padding=False \
   actor_rollout_ref.model.override_config.attn_implementation=sdpa \
@@ -486,7 +501,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen2.5-0.5B-Instruct}"
+export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3.5-2B}"
 
 echo "model=$MODEL_PATH"
 
@@ -617,7 +632,7 @@ echo "model=$MODEL_PATH"
 echo "-- full_train=base_rl"
 ray stop --force >/dev/null 2>&1 || true
 python3 -m verl.trainer.main_ppo \
-  --config-name sdpo_math_l40s \
+  --config-name sdpo_math_a100 \
   actor_rollout_ref.model.path="$MODEL_PATH" \
   actor_rollout_ref.model.use_remove_padding=False \
   actor_rollout_ref.model.override_config.attn_implementation=sdpa \

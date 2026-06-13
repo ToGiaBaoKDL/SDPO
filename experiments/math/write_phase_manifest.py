@@ -14,6 +14,7 @@ from pathlib import Path
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--config-name", required=True)
     parser.add_argument("--phase", required=True)
     parser.add_argument("--profile", required=True)
     parser.add_argument("--model", required=True)
@@ -45,6 +46,22 @@ def main() -> None:
         "project_root": os.environ.get("PROJECT_ROOT"),
         "phase": args.phase,
         "profile": args.profile,
+        "profile_settings": {
+            key.lower(): os.environ.get(key)
+            for key in [
+                "TRAIN_BS",
+                "ROLLOUT_N",
+                "AGENT_WORKERS",
+                "VAL_BS",
+                "RESPONSE_LEN",
+                "MODEL_LEN",
+                "ACTOR_LEN",
+                "REPROMPT_LEN",
+                "BATCHED_TOKENS",
+                "GPU_UTIL",
+            ]
+        },
+        "config_name": args.config_name,
         "model": args.model,
         "variants": args.variants.split(),
         "train_steps": args.train_steps,

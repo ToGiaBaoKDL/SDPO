@@ -27,7 +27,7 @@ bash -n \
 from pathlib import Path
 
 expected_defaults = {
-    "experiments/math/run_sdpo_math_smoke.sh": "Qwen/Qwen2.5-0.5B-Instruct",
+    "experiments/math/run_sdpo_math_smoke.sh": "Qwen/Qwen3.5-2B",
     "experiments/math/run_sdpo_math_vanilla.sh": "Qwen/Qwen3.5-9B",
     "experiments/math/run_sdpo_math_reliability.sh": "Qwen/Qwen3.5-9B",
 }
@@ -36,7 +36,7 @@ for path, expected in expected_defaults.items():
     assert expected in text, f"{path} missing default {expected}"
 
 runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding="utf-8")
-for expected in ["Qwen/Qwen2.5-0.5B-Instruct", "Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B"]:
+for expected in ["Qwen/Qwen3.5-2B", "Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B"]:
     assert expected in runner, f"benchmark runner missing model default {expected}"
 
 phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-8")
@@ -49,7 +49,7 @@ echo "[2/5] Checking YAML config"
 "${PYTHON_BIN}" - <<'PY'
 import yaml
 
-with open("verl/trainer/config/sdpo_math_l40s.yaml", encoding="utf-8") as f:
+with open("verl/trainer/config/sdpo_math_a100.yaml", encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
 
 assert cfg["actor_rollout_ref"]["actor"]["policy_loss"]["loss_mode"] == "sdpo"

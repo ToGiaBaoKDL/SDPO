@@ -19,7 +19,7 @@ def require_snippet(path: str, text: str, snippet: str) -> None:
 
 
 def main() -> None:
-    config_path = Path("verl/trainer/config/sdpo_math_l40s.yaml")
+    config_path = Path("verl/trainer/config/sdpo_math_a100.yaml")
     with config_path.open(encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
@@ -57,8 +57,9 @@ def main() -> None:
         "fast)",
         "balanced)",
         "quality)",
-        "high_mem_9b|a100_7b)",
-        "AGENT_WORKERS=8",
+        "high_mem_9b|a100_9b)",
+        "AGENT_WORKERS=16",
+        "BATCHED_TOKENS=32768",
         "actor_rollout_ref.rollout.val_kwargs.n=1",
     ]:
         require_snippet(phase_common_path, phase_common, snippet)
@@ -79,7 +80,9 @@ def main() -> None:
     for snippet in [
         "scale_decision|ablation)",
         "thesis)",
-        "scale_9b|scale_7b)",
+        "scale_9b)",
+        "--config-name \"${CONFIG_NAME}\"",
+        "trainer.validation_data_dir",
         "DRY_RUN",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
     ]:

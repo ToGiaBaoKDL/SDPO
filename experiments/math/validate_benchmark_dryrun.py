@@ -9,27 +9,35 @@ from pathlib import Path
 
 EXPECTED_SNIPPETS = {
     "base_model": [
+        "--config-name sdpo_math_a100",
         "trainer.val_before_train=True",
         "trainer.val_only=True",
+        "trainer.validation_data_dir=",
         "actor_rollout_ref.model.lora_rank=0",
         "actor_rollout_ref.actor.policy_loss.loss_mode=vanilla",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=False",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=False",
     ],
     "base_rl": [
+        "--config-name sdpo_math_a100",
         "trainer.total_training_steps=1",
+        "trainer.validation_data_dir=",
         "actor_rollout_ref.actor.policy_loss.loss_mode=vanilla",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=False",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=False",
     ],
     "sdpo_vanilla": [
+        "--config-name sdpo_math_a100",
         "trainer.total_training_steps=1",
+        "trainer.validation_data_dir=",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=True",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=False",
     ],
     "sdpo_reliability": [
+        "--config-name sdpo_math_a100",
         "trainer.total_training_steps=1",
+        "trainer.validation_data_dir=",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=True",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=True",

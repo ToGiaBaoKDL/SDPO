@@ -33,9 +33,12 @@ def main() -> None:
     require(summary_path.exists(), f"missing {summary_path}; run summarize_phase_results.py first")
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    project_root = Path(manifest.get("project_root") or ".")
     require(set(manifest["variants"]) == REQUIRED_VARIANTS, f"unexpected variants in manifest: {manifest['variants']}")
     require(manifest["seed"] is not None, "manifest missing seed")
     require(manifest["model"], "manifest missing model")
+    require(manifest.get("config_name") == "sdpo_math_a100", f"unexpected config_name: {manifest.get('config_name')}")
+    require(manifest.get("profile_settings"), "manifest missing profile_settings")
 
     rows = list(csv.DictReader(summary_path.open(encoding="utf-8")))
     variants = {row["variant"] for row in rows}
@@ -52,10 +55,14 @@ def main() -> None:
         if variant == "sdpo_reliability":
             require(row["sdpo_reliability_weight_mean"] != "", "sdpo_reliability missing reliability weight metric")
 
+        validation_dir = args.log_dir / "validation" / f"{variant}_{manifest['exp_suffix']}"
+        require(validation_dir.exists(), f"{variant} missing validation dump dir: {validation_dir}")
+        require(list(validation_dir.glob("*.jsonl")), f"{variant} missing validation jsonl dumps: {validation_dir}")
+
     if args.require_checkpoints:
         exp_suffix = manifest["exp_suffix"]
         for variant in TRAINED_VARIANTS:
-            ckpt_root = Path("checkpoints/sdpo_math") / f"{variant}_{exp_suffix}"
+            ckpt_root = project_root / "checkpoints/sdpo_math" / f"{variant}_{exp_suffix}"
             require(ckpt_root.exists(), f"missing checkpoint root for {variant}: {ckpt_root}")
             require(list(ckpt_root.rglob("global_step_*")), f"missing global_step checkpoint for {variant}: {ckpt_root}")
 

@@ -8,48 +8,52 @@ sdpo_math_configure_profile() {
 
   case "${profile}" in
     fast)
-      TRAIN_BS=4
-      ROLLOUT_N=2
-      AGENT_WORKERS=8
-      VAL_BS=32
-      RESPONSE_LEN=1024
-      MODEL_LEN=3072
-      ACTOR_LEN=3072
-      REPROMPT_LEN=2048
-      GPU_UTIL=0.60
-      ;;
-    balanced)
-      TRAIN_BS=8
-      ROLLOUT_N=2
-      AGENT_WORKERS=8
-      VAL_BS=32
-      RESPONSE_LEN=1536
-      MODEL_LEN=3584
-      ACTOR_LEN=4096
-      REPROMPT_LEN=2560
-      GPU_UTIL=0.62
-      ;;
-    quality)
-      TRAIN_BS=8
-      ROLLOUT_N=4
-      AGENT_WORKERS=8
-      VAL_BS=32
-      RESPONSE_LEN=1536
-      MODEL_LEN=3584
-      ACTOR_LEN=4096
-      REPROMPT_LEN=2560
-      GPU_UTIL=0.64
-      ;;
-    high_mem_9b|a100_7b)
-      TRAIN_BS=8
+      TRAIN_BS=16
       ROLLOUT_N=4
       AGENT_WORKERS=16
-      VAL_BS=32
-      RESPONSE_LEN=2048
+      VAL_BS=64
+      RESPONSE_LEN=1024
       MODEL_LEN=4096
       ACTOR_LEN=4096
+      REPROMPT_LEN=2048
+      BATCHED_TOKENS=16384
+      GPU_UTIL=0.78
+      ;;
+    balanced)
+      TRAIN_BS=16
+      ROLLOUT_N=4
+      AGENT_WORKERS=16
+      VAL_BS=64
+      RESPONSE_LEN=1536
+      MODEL_LEN=5120
+      ACTOR_LEN=6144
       REPROMPT_LEN=3072
-      GPU_UTIL=0.80
+      BATCHED_TOKENS=24576
+      GPU_UTIL=0.82
+      ;;
+    quality)
+      TRAIN_BS=16
+      ROLLOUT_N=4
+      AGENT_WORKERS=16
+      VAL_BS=64
+      RESPONSE_LEN=2048
+      MODEL_LEN=6144
+      ACTOR_LEN=8192
+      REPROMPT_LEN=4096
+      BATCHED_TOKENS=32768
+      GPU_UTIL=0.85
+      ;;
+    high_mem_9b|a100_9b)
+      TRAIN_BS=24
+      ROLLOUT_N=4
+      AGENT_WORKERS=24
+      VAL_BS=64
+      RESPONSE_LEN=2048
+      MODEL_LEN=6144
+      ACTOR_LEN=8192
+      REPROMPT_LEN=4096
+      BATCHED_TOKENS=49152
+      GPU_UTIL=0.88
       ;;
     *)
       echo "Unknown RUN_PROFILE=${profile}. Use fast, balanced, quality, or high_mem_9b." >&2
@@ -57,7 +61,7 @@ sdpo_math_configure_profile() {
       ;;
   esac
 
-  export TRAIN_BS ROLLOUT_N AGENT_WORKERS VAL_BS RESPONSE_LEN MODEL_LEN ACTOR_LEN REPROMPT_LEN GPU_UTIL
+  export TRAIN_BS ROLLOUT_N AGENT_WORKERS VAL_BS RESPONSE_LEN MODEL_LEN ACTOR_LEN REPROMPT_LEN BATCHED_TOKENS GPU_UTIL
 }
 
 sdpo_math_validate_profile() {
@@ -111,7 +115,7 @@ sdpo_math_build_common_overrides() {
     actor_rollout_ref.rollout.n="${ROLLOUT_N}"
     actor_rollout_ref.rollout.agent.num_workers="${AGENT_WORKERS}"
     actor_rollout_ref.rollout.max_model_len="${MODEL_LEN}"
-    actor_rollout_ref.rollout.max_num_batched_tokens="${MODEL_LEN}"
+    actor_rollout_ref.rollout.max_num_batched_tokens="${BATCHED_TOKENS}"
     actor_rollout_ref.rollout.gpu_memory_utilization="${GPU_UTIL}"
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu="${MODEL_LEN}"
     actor_rollout_ref.rollout.val_kwargs.n=1
@@ -132,5 +136,5 @@ sdpo_math_prepare_phase_run() {
   sdpo_math_init_logging "${log_dir}"
   sdpo_math_build_common_overrides
 
-  echo "profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} agent_workers=${AGENT_WORKERS} val_bs=${VAL_BS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN}"
+  echo "profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} agent_workers=${AGENT_WORKERS} val_bs=${VAL_BS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS}"
 }

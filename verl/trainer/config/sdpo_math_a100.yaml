@@ -2,8 +2,9 @@ defaults:
   - ppo_trainer
   - _self_
 
-# Conservative 2-GPU SDPO-Math config. This file intentionally does not
-# inherit user.yaml because that file is cluster-specific and assumes 4 GPUs.
+# 2-GPU A100 SDPO-Math config. This file intentionally does not inherit user.yaml
+# because that file is cluster-specific and assumes 4 GPUs. The phase runner
+# overrides batch/token settings for the active A100 profile.
 
 # Rollout needs prompt + response. SDPO actor updates additionally score the
 # teacher reprompt plus the same response, so keep a separate actor budget.
@@ -15,11 +16,11 @@ data:
   train_files: ["${oc.env:PROJECT_ROOT}/data/dapo_math_en/train.parquet"]
   val_files: ["${oc.env:PROJECT_ROOT}/data/dapo_math_en/val.parquet"]
   train_batch_size: 16
-  val_batch_size: null
+  val_batch_size: 64
   train_max_samples: -1
   val_max_samples: -1
   max_prompt_length: 2048
-  max_response_length: 4096
+  max_response_length: 2048
   dataloader_num_workers: 0
   filter_overlong_prompts: True
   filter_overlong_prompts_workers: 1
@@ -85,7 +86,7 @@ actor_rollout_ref:
     log_prob_micro_batch_size_per_gpu: 1
     log_prob_max_token_len_per_gpu: ${rollout_model_len}
     fsdp_config:
-      param_offload: True
+      param_offload: False
 
   rollout:
     name: vllm
@@ -95,19 +96,19 @@ actor_rollout_ref:
     top_k: -1
     calculate_log_probs: True
     tensor_model_parallel_size: 2
-    gpu_memory_utilization: 0.55
+    gpu_memory_utilization: 0.85
     log_prob_micro_batch_size_per_gpu: 1
     log_prob_max_token_len_per_gpu: ${rollout_model_len}
-    max_num_batched_tokens: ${rollout_model_len}
+    max_num_batched_tokens: 32768
     max_model_len: ${rollout_model_len}
     agent:
-      num_workers: 2
+      num_workers: 16
     val_kwargs:
-      n: 4
-      temperature: 0.6
-      top_p: 0.95
+      n: 1
+      temperature: 0.0
+      top_p: 1.0
       top_k: -1
-      do_sample: True
+      do_sample: False
 
 critic:
   model:
@@ -133,7 +134,7 @@ reward_manager:
 trainer:
   project_name: SDPO-Math
   group_name: SDPO-Math
-  experiment_name: sdpo_math_l40s
+  experiment_name: sdpo_math_a100
   logger: ["console"]
   nnodes: 1
   n_gpus_per_node: 2
