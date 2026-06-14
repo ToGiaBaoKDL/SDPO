@@ -97,6 +97,7 @@ Use `ULTRA_QUIET=1` for long runs. It hides Ray worker stdout and writes metrics
 
 Run after every pull/update before longer experiments.
 The Transformers CUDA load smoke and vLLM engine smoke run in separate Python processes to avoid CUDA-context interference. The vLLM smoke uses `gpu_memory_utilization=0.70` intentionally; lower values can make vLLM report zero available KV-cache blocks and fail during engine startup.
+`math_env.sh` also sets `VLLM_WORKER_MULTIPROC_METHOD=spawn`, matching the repo Dockerfiles and preventing CUDA re-initialization errors in vLLM engine subprocesses.
 
 %%bash
 set -euo pipefail

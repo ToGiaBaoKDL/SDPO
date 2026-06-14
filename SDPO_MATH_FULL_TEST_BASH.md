@@ -177,6 +177,7 @@ for term in ["flash_attention_2", "flash-attn", "flash_attn"]:
         raise SystemExit(f"Unexpected FlashAttention reference in config: {term}")
 
 quiet_text = Path("experiments/math/common_quiet_env.sh").read_text(encoding="utf-8")
+assert 'VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"' in quiet_text
 assert 'RAY_DEDUP_LOGS="${RAY_DEDUP_LOGS:-1}"' in quiet_text
 assert 'VLLM_LOGGING_LEVEL="${VLLM_LOGGING_LEVEL:-ERROR}"' in quiet_text
 assert 'TRANSFORMERS_VERBOSITY="${TRANSFORMERS_VERBOSITY:-error}"' in quiet_text

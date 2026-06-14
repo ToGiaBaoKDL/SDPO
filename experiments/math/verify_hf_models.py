@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import gc
+import multiprocessing as mp
+import os
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -159,6 +161,12 @@ def load_vllm_smoke(
             "vLLM imports numba in this stack, and numba requires NumPy 2.2 or less. "
             'Run: uv pip install -q -U "numpy==2.1.0"'
         )
+
+    os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
+    try:
+        mp.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass
 
     try:
         from vllm import LLM, SamplingParams

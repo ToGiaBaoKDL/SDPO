@@ -3,6 +3,7 @@
 # Quiet defaults for notebook smoke/short-train runs.
 # For raw repeated Ray worker logs while debugging, run with QUIET_LOGS=0.
 export QUIET_LOGS="${QUIET_LOGS:-1}"
+export VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"
 
 if [[ "${QUIET_LOGS}" == "1" ]]; then
   export RAY_DEDUP_LOGS="${RAY_DEDUP_LOGS:-1}"

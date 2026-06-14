@@ -39,6 +39,7 @@ echo "prepare_data=${PREPARE_DATA}"
 echo "verify_hf_models=${VERIFY_HF_MODELS}"
 echo "stable_transformers_spec=${STABLE_TRANSFORMERS_SPEC}"
 echo "numpy_spec=${NUMPY_SPEC}"
+echo "vllm_worker_multiproc_method=${VLLM_WORKER_MULTIPROC_METHOD}"
 echo "run_transformers_load_smoke=${RUN_TRANSFORMERS_LOAD_SMOKE}"
 echo "run_vllm_load_smoke=${RUN_VLLM_LOAD_SMOKE}"
 

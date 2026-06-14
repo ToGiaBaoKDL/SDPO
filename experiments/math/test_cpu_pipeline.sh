@@ -43,6 +43,9 @@ phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-
 assert "+ray_kwargs.ray_init.log_to_driver=False" in phase_common
 assert "+ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT=" in phase_common
 assert "\n      ray_kwargs.ray_init.log_to_driver=False" not in phase_common
+
+quiet_env = Path("experiments/math/common_quiet_env.sh").read_text(encoding="utf-8")
+assert 'VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"' in quiet_env
 PY
 
 echo "[2/5] Checking YAML config"
