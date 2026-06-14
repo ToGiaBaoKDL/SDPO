@@ -13,8 +13,8 @@ RUN_CPU_CHECK="${RUN_CPU_CHECK:-1}"
 VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-1}"
 INSTALL_QWEN35_TRANSFORMERS="${INSTALL_QWEN35_TRANSFORMERS:-1}"
 QWEN35_TRANSFORMERS_SPEC="${QWEN35_TRANSFORMERS_SPEC:-git+https://github.com/huggingface/transformers.git}"
-RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE="${RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE:-1}"
-RUN_QWEN35_VLLM_LOAD_SMOKE="${RUN_QWEN35_VLLM_LOAD_SMOKE:-1}"
+RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE="${RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE:-0}"
+RUN_QWEN35_VLLM_LOAD_SMOKE="${RUN_QWEN35_VLLM_LOAD_SMOKE:-0}"
 QWEN35_VLLM_SMOKE_TP="${QWEN35_VLLM_SMOKE_TP:-1}"
 QWEN35_VLLM_SMOKE_MAX_MODEL_LEN="${QWEN35_VLLM_SMOKE_MAX_MODEL_LEN:-1024}"
 QWEN35_VLLM_SMOKE_GPU_UTIL="${QWEN35_VLLM_SMOKE_GPU_UTIL:-0.25}"
@@ -73,8 +73,25 @@ uv pip install -q pyyaml pyarrow pandas datasets
 uv pip install -q -e ".[vllm]"
 
 if [[ "${INSTALL_QWEN35_TRANSFORMERS}" == "1" ]]; then
-  echo "Installing Qwen3.5-compatible Transformers from ${QWEN35_TRANSFORMERS_SPEC}"
-  uv pip install -q -U "${QWEN35_TRANSFORMERS_SPEC}"
+  if python - <<'PY'
+import os
+
+from transformers import AutoConfig
+
+model_id = os.environ.get("SMOKE_MODEL_PATH", "Qwen/Qwen3.5-2B")
+try:
+    cfg = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+except Exception as exc:
+    print(f"installed_transformers_qwen35_config_failed: {type(exc).__name__}: {exc}")
+    raise SystemExit(1)
+print("installed_transformers_qwen35_config_ok:", {"id": model_id, "model_type": getattr(cfg, "model_type", None)})
+PY
+  then
+    echo "Skipping Transformers source install; installed stack already reads Qwen3.5 config."
+  else
+    echo "Installing Qwen3.5-compatible Transformers from ${QWEN35_TRANSFORMERS_SPEC}"
+    uv pip install -q -U "${QWEN35_TRANSFORMERS_SPEC}"
+  fi
 fi
 
 if [[ "${INSTALL_MATH_VERIFY}" == "1" ]]; then

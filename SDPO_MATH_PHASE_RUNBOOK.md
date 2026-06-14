@@ -11,7 +11,7 @@ Validation in these phases uses `data/dapo_math_en/val.parquet`, the held-out DA
 
 ## Required Setup
 
-Use a fresh clone at `/root/SDPO` and pull the latest code before running phases. The setup script creates a Python 3.12 uv venv, installs the project with vLLM, installs `math-verify`, verifies the Hugging Face model ids and Transformers architecture support, loads the Qwen3.5 pilot model once with Transformers and once with vLLM, prepares the English DAPO-Math split if missing, and runs CPU/data checks.
+Use a fresh clone at `/root/SDPO` and pull the latest code before running phases. The setup script creates a Python 3.12 uv venv, installs the project with vLLM, installs `math-verify`, verifies the Hugging Face model ids and Transformers architecture support, prepares the English DAPO-Math split if missing, and runs CPU/data checks. It does not load model weights by default; Phase 0 performs the real Transformers/vLLM load smoke.
 
 Run once per notebook VM:
 
@@ -26,9 +26,9 @@ unset PYTHON_VERSION
 export SDPO_PYTHON_VERSION=3.12
 bash experiments/math/setup_math_notebook.sh
 
-Useful setup flags: `PREPARE_DATA=0` skips data creation, `RUN_CPU_CHECK=0` skips CPU checks, `VERIFY_HF_MODELS=0` skips Hugging Face model checks, `RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE=0` skips the setup-time Transformers load smoke, `RUN_QWEN35_VLLM_LOAD_SMOKE=0` skips the setup-time vLLM load smoke, and `INSTALL_MATH_VERIFY=0` skips `math-verify` installation. For thesis runs, keep `INSTALL_MATH_VERIFY=1`.
+Useful setup flags: `PREPARE_DATA=0` skips data creation, `RUN_CPU_CHECK=0` skips CPU checks, `VERIFY_HF_MODELS=0` skips Hugging Face model checks, `RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE=1` adds a setup-time Transformers load smoke, `RUN_QWEN35_VLLM_LOAD_SMOKE=1` adds a setup-time vLLM load smoke, and `INSTALL_MATH_VERIFY=0` skips `math-verify` installation. For thesis runs, keep `INSTALL_MATH_VERIFY=1`.
 
-Qwen3.5 currently requires a Transformers build that recognizes `model_type=qwen3_5`. The setup script installs `git+https://github.com/huggingface/transformers.git` after `verl[vllm]` by default. Override with `INSTALL_QWEN35_TRANSFORMERS=0` only if your installed Transformers already passes `experiments/math/verify_hf_models.py`. Setup runs real Transformers and vLLM load smokes by default; Phase 0 repeats the same gate after every pull/update.
+Qwen3.5 currently requires a Transformers build that recognizes `model_type=qwen3_5`. The setup script checks the installed stack after `verl[vllm]`; if it cannot read the Qwen3.5 config, it installs `git+https://github.com/huggingface/transformers.git`. Override with `INSTALL_QWEN35_TRANSFORMERS=0` only if your installed Transformers already passes `experiments/math/verify_hf_models.py`. Phase 0 repeats the architecture check and runs real Transformers and vLLM load smokes after every pull/update.
 
 The setup script intentionally uses `SDPO_PYTHON_VERSION`, not the generic notebook variable `PYTHON_VERSION`. Use Python 3.12 unless you intentionally set `ALLOW_UNTESTED_PYTHON=1`.
 

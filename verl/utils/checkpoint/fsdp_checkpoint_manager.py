@@ -330,13 +330,26 @@ class FSDPCheckpointManager(BaseCheckpointManager):
                     ):
                         auto_model_cls = AutoModelForMultimodalLM
                     elif version.parse(transformers.__version__) >= version.parse("4.54.0"):
-                        # transformers >= 4.54.0 uses AutoModelForImageTextToText
-                        from transformers import AutoModelForImageTextToText
+                        # transformers >= 4.54.0 uses AutoModelForImageTextToText when available.
+                        try:
+                            from transformers import AutoModelForImageTextToText
+                        except ImportError as exc:
+                            raise ImportError(
+                                "This Transformers build does not expose AutoModelForMultimodalLM, "
+                                "AutoModelForImageTextToText, or AutoModelForVision2Seq for conditional "
+                                f"generation checkpoint export: {model_config.architectures}"
+                            ) from exc
 
                         auto_model_cls = AutoModelForImageTextToText
                     else:
                         # transformers < 4.54.0 uses AutoModelForVision2Seq
-                        from transformers import AutoModelForVision2Seq
+                        try:
+                            from transformers import AutoModelForVision2Seq
+                        except ImportError as exc:
+                            raise ImportError(
+                                "This Transformers build does not expose AutoModelForVision2Seq for conditional "
+                                f"generation checkpoint export: {model_config.architectures}"
+                            ) from exc
 
                         auto_model_cls = AutoModelForVision2Seq
                 else:

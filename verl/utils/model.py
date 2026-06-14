@@ -32,13 +32,17 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForSequenceClassification,
     AutoModelForTokenClassification,
-    AutoModelForVision2Seq,
     GenerationConfig,
     MistralForSequenceClassification,
     PretrainedConfig,
     PreTrainedModel,
 )
 from transformers.modeling_outputs import CausalLMOutputWithPast
+
+try:
+    from transformers import AutoModelForVision2Seq
+except ImportError:  # Newer Transformers builds may remove this older multimodal auto class.
+    AutoModelForVision2Seq = None
 
 try:
     from transformers import AutoModelForImageTextToText
@@ -664,10 +668,11 @@ def load_valuehead_model(local_path, torch_dtype, model_config, trust_remote_cod
 
 _architecture_to_auto_class = {
     "ForCausalLM": AutoModelForCausalLM,
-    "ForVision2Seq": AutoModelForVision2Seq,
     "ForTokenClassification": AutoModelForTokenClassification,
     "ForSequenceClassification": AutoModelForSequenceClassification,
 }
+if AutoModelForVision2Seq is not None:
+    _architecture_to_auto_class["ForVision2Seq"] = AutoModelForVision2Seq
 if AutoModelForMultimodalLM is not None:
     _architecture_to_auto_class["ForMultimodalLM"] = AutoModelForMultimodalLM
 
@@ -679,7 +684,7 @@ def get_hf_auto_model_class(hf_config):
     if has_remote_code:
         auto_class = next(k for k, v in hf_config.auto_map.items() if hf_config.architectures[0] in v)
         match auto_class:
-            case "AutoModelForVision2Seq":
+            case "AutoModelForVision2Seq" if AutoModelForVision2Seq is not None:
                 actor_module_class = AutoModelForVision2Seq
             case "AutoModelForCausalLM":
                 actor_module_class = AutoModelForCausalLM
