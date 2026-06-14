@@ -32,16 +32,16 @@ Variants:
 
 Profile settings are selected by `HARDWARE_PROFILE`:
 
-| Hardware | Profile | Train batch | Rollout n | Workers | Response | Model len |
-|---|---|---:|---:|---:|---:|---:|
-| A100 | `fast` | 48 | 4 | 64 | 1536 | 5120 |
-| A100 | `balanced` | 48 | 4 | 64 | 2048 | 6144 |
-| A100 | `quality` | 32 | 4 | 64 | 2560 | 7168 |
-| H100 | `fast` | 64 | 4 | 128 | 1536 | 5120 |
-| H100 | `balanced` | 64 | 4 | 128 | 2048 | 6144 |
-| H100 | `quality` | 48 | 4 | 96 | 3072 | 8192 |
+| Hardware | Profile | Train batch | Rollout n | Workers | Response | Model len | vLLM util |
+|---|---|---:|---:|---:|---:|---:|---:|
+| A100 | `fast` | 48 | 4 | 64 | 1536 | 5120 | 0.82 |
+| A100 | `balanced` | 48 | 4 | 64 | 2048 | 6144 | 0.82 |
+| A100 | `quality` | 32 | 4 | 64 | 2560 | 7168 | 0.82 |
+| H100 | `fast` | 64 | 4 | 128 | 1536 | 5120 | 0.92 |
+| H100 | `balanced` | 64 | 4 | 128 | 2048 | 6144 | 0.93 |
+| H100 | `quality` | 48 | 4 | 96 | 3072 | 8192 | 0.93 |
 
-Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
+Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. A100 defaults target 40GB cards; if vLLM still reports insufficient free memory, rerun with `GPU_UTIL=0.80`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
 
 ## Setup
 
@@ -62,9 +62,8 @@ bash experiments/math/setup_math_notebook.sh
 Useful setup flags:
 
 - `PREPARE_DATA=0`: skip data creation.
-- `RUN_CPU_CHECK=0`: skip CPU checks.
-- `VERIFY_HF_MODELS=0`: skip Hugging Face model checks.
-- `RUN_TRANSFORMERS_LOAD_SMOKE=1`: add a Transformers load smoke.
+- `RUN_CPU_CHECK=1`: run CPU/static checks during setup.
+- `VERIFY_HF_MODELS=1`: add a lightweight Hugging Face metadata check during setup.
 - `INSTALL_MATH_VERIFY=0`: skip `math-verify`; keep it enabled for thesis.
 
 ## Phase 0: Preflight
@@ -79,13 +78,6 @@ cd /root/SDPO
 source experiments/math/math_env.sh
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
-
-python experiments/math/verify_hf_models.py \
-  --models "$PILOT_MODEL_PATH" "$SCALE_MODEL_PATH" "$THESIS_MODEL_PATH"
-
-python experiments/math/verify_hf_models.py \
-  --models "$PILOT_MODEL_PATH" \
-  --load-smoke-model "$PILOT_MODEL_PATH"
 
 ray stop --force >/dev/null 2>&1 || true
 bash experiments/math/run_sdpo_math_live_preflight.sh

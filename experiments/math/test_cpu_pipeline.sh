@@ -65,8 +65,19 @@ assert "unset RAY_BACKEND_LOG_LEVEL" in quiet_env
 assert "export RAY_BACKEND_LOG_LEVEL" not in quiet_env
 
 setup = Path("experiments/math/setup_math_notebook.sh").read_text(encoding="utf-8")
-for snippet in ["RUN_VLLM_LOAD_SMOKE", "RUN_STANDALONE_VLLM_LOAD_SMOKE", "--vllm-smoke-model"]:
-    assert snippet not in setup, f"setup script should not run standalone vLLM smoke: {snippet}"
+for snippet in [
+    'RUN_CPU_CHECK="${RUN_CPU_CHECK:-0}"',
+    'VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-0}"',
+]:
+    assert snippet in setup, f"setup script missing lightweight default: {snippet}"
+for snippet in [
+    "RUN_TRANSFORMERS_LOAD_SMOKE",
+    "--load-smoke-model",
+    "RUN_VLLM_LOAD_SMOKE",
+    "RUN_STANDALONE_VLLM_LOAD_SMOKE",
+    "--vllm-smoke-model",
+]:
+    assert snippet not in setup, f"setup script should not run standalone model smoke: {snippet}"
 PY
 
 echo "[2/5] Checking YAML config"

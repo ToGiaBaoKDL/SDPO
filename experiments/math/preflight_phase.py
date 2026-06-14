@@ -105,12 +105,15 @@ def main() -> None:
     setup = Path(setup_path).read_text(encoding="utf-8")
     for snippet in [
         "SDPO_PYTHON_VERSION",
+        'RUN_CPU_CHECK="${RUN_CPU_CHECK:-0}"',
+        'VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-0}"',
         "transformers==4.57.1",
         "numpy==2.1.0",
-        "RUN_TRANSFORMERS_LOAD_SMOKE",
     ]:
         require_snippet(setup_path, setup, snippet)
     for snippet in [
+        "RUN_TRANSFORMERS_LOAD_SMOKE",
+        "--load-smoke-model",
         "RUN_VLLM_LOAD_SMOKE",
         "RUN_STANDALONE_VLLM_LOAD_SMOKE",
         "--vllm-smoke-model",

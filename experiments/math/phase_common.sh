@@ -26,7 +26,7 @@ sdpo_math_configure_profile() {
       ACTOR_LEN=6144
       REPROMPT_LEN=3072
       BATCHED_TOKENS=65536
-      GPU_UTIL=0.90
+      GPU_UTIL="${GPU_UTIL:-0.82}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     a100:balanced)
@@ -38,7 +38,7 @@ sdpo_math_configure_profile() {
       ACTOR_LEN=8192
       REPROMPT_LEN=4096
       BATCHED_TOKENS=98304
-      GPU_UTIL=0.91
+      GPU_UTIL="${GPU_UTIL:-0.82}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     a100:quality)
@@ -50,7 +50,7 @@ sdpo_math_configure_profile() {
       ACTOR_LEN=9216
       REPROMPT_LEN=4608
       BATCHED_TOKENS=98304
-      GPU_UTIL=0.91
+      GPU_UTIL="${GPU_UTIL:-0.82}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     h100:fast)
@@ -62,7 +62,7 @@ sdpo_math_configure_profile() {
       ACTOR_LEN=6144
       REPROMPT_LEN=3072
       BATCHED_TOKENS=98304
-      GPU_UTIL=0.92
+      GPU_UTIL="${GPU_UTIL:-0.92}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     h100:balanced)
@@ -74,7 +74,7 @@ sdpo_math_configure_profile() {
       ACTOR_LEN=8192
       REPROMPT_LEN=4096
       BATCHED_TOKENS=131072
-      GPU_UTIL=0.93
+      GPU_UTIL="${GPU_UTIL:-0.93}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     h100:quality)
@@ -86,7 +86,7 @@ sdpo_math_configure_profile() {
       ACTOR_LEN=10240
       REPROMPT_LEN=5120
       BATCHED_TOKENS=131072
-      GPU_UTIL=0.93
+      GPU_UTIL="${GPU_UTIL:-0.93}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     *)
@@ -170,5 +170,5 @@ sdpo_math_prepare_phase_run() {
   sdpo_math_init_logging "${log_dir}"
   sdpo_math_build_common_overrides
 
-  echo "hardware=${HARDWARE_PROFILE:-a100} profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} enforce_eager=${ENFORCE_EAGER}"
+  echo "hardware=${HARDWARE_PROFILE:-a100} profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} gpu_util=${GPU_UTIL} enforce_eager=${ENFORCE_EAGER}"
 }

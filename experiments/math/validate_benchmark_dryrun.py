@@ -62,12 +62,14 @@ PROFILE_EXPECTATIONS = {
         "train_batch_size": 48,
         "agent_workers": 64,
         "base_model_train_max_samples": 96,
+        "gpu_util": "0.82",
         "enforce_eager": "False",
     },
     ("h100", "fast"): {
         "train_batch_size": 64,
         "agent_workers": 128,
         "base_model_train_max_samples": 128,
+        "gpu_util": "0.92",
         "enforce_eager": "False",
     },
 }
@@ -87,6 +89,7 @@ def expected_snippets(hardware_profile: str, profile: str) -> dict[str, list[str
     for snippets in result.values():
         snippets.append(f"data.train_batch_size={settings['train_batch_size']}")
         snippets.append(f"actor_rollout_ref.rollout.agent.num_workers={settings['agent_workers']}")
+        snippets.append(f"actor_rollout_ref.rollout.gpu_memory_utilization={settings['gpu_util']}")
         snippets.append(f"actor_rollout_ref.rollout.enforce_eager={settings['enforce_eager']}")
     return result
 
