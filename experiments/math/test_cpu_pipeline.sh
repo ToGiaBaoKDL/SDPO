@@ -47,6 +47,8 @@ assert "\n      ray_kwargs.ray_init.log_to_driver=False" not in phase_common
 
 quiet_env = Path("experiments/math/common_quiet_env.sh").read_text(encoding="utf-8")
 assert 'VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"' in quiet_env
+assert "unset RAY_BACKEND_LOG_LEVEL" in quiet_env
+assert "export RAY_BACKEND_LOG_LEVEL" not in quiet_env
 
 setup = Path("experiments/math/setup_math_notebook.sh").read_text(encoding="utf-8")
 for snippet in ["RUN_VLLM_LOAD_SMOKE", "RUN_STANDALONE_VLLM_LOAD_SMOKE", "--vllm-smoke-model"]:
@@ -64,7 +66,7 @@ assert cfg["actor_rollout_ref"]["actor"]["policy_loss"]["loss_mode"] == "sdpo"
 assert cfg["actor_rollout_ref"]["model"]["path"] == "Qwen/Qwen3-8B"
 assert cfg["critic"]["model"]["path"] == "Qwen/Qwen3-8B"
 assert cfg["data"]["train_batch_size"] == 24
-assert cfg["data"]["val_batch_size"] == 128
+assert "val_batch_size" not in cfg["data"]
 assert cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"] == 32
 assert cfg["actor_rollout_ref"]["rollout"]["max_num_batched_tokens"] == 49152
 assert cfg["actor_rollout_ref"]["rollout"]["enforce_eager"] is True

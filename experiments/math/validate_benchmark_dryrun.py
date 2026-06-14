@@ -61,6 +61,11 @@ EXPECTED_SNIPPETS = {
     ],
 }
 
+FORBIDDEN_SNIPPETS = [
+    "data.val_batch_size=",
+    "RAY_BACKEND_LOG_LEVEL",
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -89,6 +94,9 @@ def main() -> None:
         for snippet in snippets:
             if snippet not in text:
                 missing_snippets.append(f"{path}: missing {snippet}")
+        for snippet in FORBIDDEN_SNIPPETS:
+            if snippet in text:
+                missing_snippets.append(f"{path}: forbidden {snippet}")
 
     if missing_files or missing_snippets:
         details = "\n".join(missing_files + missing_snippets)

@@ -36,7 +36,6 @@ def main() -> None:
         "actor_model": cfg["actor_rollout_ref"]["model"]["path"],
         "critic_model": cfg["critic"]["model"]["path"],
         "train_batch_size": cfg["data"]["train_batch_size"],
-        "val_batch_size": cfg["data"]["val_batch_size"],
         "agent_workers": cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"],
         "max_num_batched_tokens": cfg["actor_rollout_ref"]["rollout"]["max_num_batched_tokens"],
         "enforce_eager": cfg["actor_rollout_ref"]["rollout"]["enforce_eager"],
@@ -52,7 +51,7 @@ def main() -> None:
     assert checks["actor_model"] == "Qwen/Qwen3-8B"
     assert checks["critic_model"] == "Qwen/Qwen3-8B"
     assert checks["train_batch_size"] == 24
-    assert checks["val_batch_size"] == 128
+    assert "val_batch_size" not in cfg["data"]
     assert checks["agent_workers"] == 32
     assert checks["max_num_batched_tokens"] == 49152
     assert checks["enforce_eager"] is True

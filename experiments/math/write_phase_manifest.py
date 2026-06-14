@@ -62,7 +62,6 @@ def main() -> None:
                 "TRAIN_BS",
                 "ROLLOUT_N",
                 "AGENT_WORKERS",
-                "VAL_BS",
                 "RESPONSE_LEN",
                 "MODEL_LEN",
                 "ACTOR_LEN",

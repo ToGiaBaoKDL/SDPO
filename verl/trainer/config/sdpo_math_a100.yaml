@@ -16,7 +16,6 @@ data:
   train_files: ["${oc.env:PROJECT_ROOT}/data/dapo_math_en/train.parquet"]
   val_files: ["${oc.env:PROJECT_ROOT}/data/dapo_math_en/val.parquet"]
   train_batch_size: 24
-  val_batch_size: 128
   train_max_samples: -1
   val_max_samples: -1
   max_prompt_length: 2048

@@ -11,7 +11,6 @@ sdpo_math_configure_profile() {
       TRAIN_BS=32
       ROLLOUT_N=4
       AGENT_WORKERS=32
-      VAL_BS=128
       RESPONSE_LEN=1024
       MODEL_LEN=4096
       ACTOR_LEN=4096
@@ -23,7 +22,6 @@ sdpo_math_configure_profile() {
       TRAIN_BS=32
       ROLLOUT_N=4
       AGENT_WORKERS=32
-      VAL_BS=128
       RESPONSE_LEN=1536
       MODEL_LEN=5120
       ACTOR_LEN=6144
@@ -35,7 +33,6 @@ sdpo_math_configure_profile() {
       TRAIN_BS=24
       ROLLOUT_N=4
       AGENT_WORKERS=32
-      VAL_BS=128
       RESPONSE_LEN=2048
       MODEL_LEN=6144
       ACTOR_LEN=8192
@@ -47,7 +44,6 @@ sdpo_math_configure_profile() {
       TRAIN_BS=32
       ROLLOUT_N=4
       AGENT_WORKERS=32
-      VAL_BS=128
       RESPONSE_LEN=2048
       MODEL_LEN=6144
       ACTOR_LEN=8192
@@ -61,7 +57,7 @@ sdpo_math_configure_profile() {
       ;;
   esac
 
-  export TRAIN_BS ROLLOUT_N AGENT_WORKERS VAL_BS RESPONSE_LEN MODEL_LEN ACTOR_LEN REPROMPT_LEN BATCHED_TOKENS GPU_UTIL
+  export TRAIN_BS ROLLOUT_N AGENT_WORKERS RESPONSE_LEN MODEL_LEN ACTOR_LEN REPROMPT_LEN BATCHED_TOKENS GPU_UTIL
 }
 
 sdpo_math_validate_profile() {
@@ -105,7 +101,6 @@ sdpo_math_build_common_overrides() {
     data.filter_overlong_prompts_workers=1
     data.seed="${SEED:-42}"
     data.train_batch_size="${TRAIN_BS}"
-    data.val_batch_size="${VAL_BS}"
     data.max_response_length="${RESPONSE_LEN}"
     rollout_model_len="${MODEL_LEN}"
     actor_max_token_len="${ACTOR_LEN}"
@@ -137,5 +132,5 @@ sdpo_math_prepare_phase_run() {
   sdpo_math_init_logging "${log_dir}"
   sdpo_math_build_common_overrides
 
-  echo "profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} val_bs=${VAL_BS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS}"
+  echo "profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS}"
 }
