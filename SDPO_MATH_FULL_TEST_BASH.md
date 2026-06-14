@@ -244,13 +244,15 @@ assert torch.cuda.is_available(), "CUDA is not visible"
 assert torch.cuda.device_count() >= 2, "Expected at least 2 visible GPUs"
 PY
 
+ray stop --force >/dev/null 2>&1 || true
+
 python experiments/math/verify_hf_models.py \
   --models "$SMOKE_MODEL_PATH" "$SCALE_MODEL_PATH" "$THESIS_MODEL_PATH" \
   --load-smoke-model "$SMOKE_MODEL_PATH" \
   --vllm-smoke-model "$SMOKE_MODEL_PATH" \
   --vllm-tensor-parallel-size 1 \
   --vllm-max-model-len 1024 \
-  --vllm-gpu-memory-utilization 0.25
+  --vllm-gpu-memory-utilization 0.50
 
 ## 4. Math-Verify Reward Smoke
 

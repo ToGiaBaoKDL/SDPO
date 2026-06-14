@@ -96,6 +96,7 @@ Use `ULTRA_QUIET=1` for long runs. It hides Ray worker stdout and writes metrics
 ## Phase 0. Preflight
 
 Run after every pull/update before longer experiments.
+The vLLM smoke uses `gpu_memory_utilization=0.50` intentionally; lower values can make vLLM report zero available KV-cache blocks and fail during engine startup.
 
 %%bash
 set -euo pipefail
@@ -104,13 +105,15 @@ echo "== Phase 0: preflight =="
 cd /root/SDPO
 source experiments/math/math_env.sh
 
+ray stop --force >/dev/null 2>&1 || true
+
 python experiments/math/verify_hf_models.py \
   --models "$PILOT_MODEL_PATH" "$SCALE_MODEL_PATH" "$THESIS_MODEL_PATH" \
   --load-smoke-model "$PILOT_MODEL_PATH" \
   --vllm-smoke-model "$PILOT_MODEL_PATH" \
   --vllm-tensor-parallel-size 1 \
   --vllm-max-model-len 1024 \
-  --vllm-gpu-memory-utilization 0.25
+  --vllm-gpu-memory-utilization 0.50
 python experiments/math/preflight_phase.py
 
 export DRY_RUN=1

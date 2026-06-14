@@ -169,13 +169,13 @@ def load_vllm_smoke(
         vllm_version = "unknown"
     print("vllm_version:", vllm_version)
 
-    try:
+    def run_llm_smoke(utilization: float) -> None:
         llm = LLM(
             model=model_id,
             trust_remote_code=True,
             tensor_parallel_size=tensor_parallel_size,
             max_model_len=max_model_len,
-            gpu_memory_utilization=gpu_memory_utilization,
+            gpu_memory_utilization=utilization,
             dtype="auto",
             enforce_eager=True,
         )
@@ -187,13 +187,49 @@ def load_vllm_smoke(
                 "id": model_id,
                 "tensor_parallel_size": tensor_parallel_size,
                 "max_model_len": max_model_len,
+                "gpu_memory_utilization": utilization,
                 "sample": text.strip(),
             },
         )
         del llm
         gc.collect()
-    except Exception as exc:
-        raise SystemExit(f"vllm_load_smoke_failed: {model_id}\n{type(exc).__name__}: {exc}") from exc
+
+    attempts = [gpu_memory_utilization]
+    fallback_utilization = 0.50
+    if gpu_memory_utilization < fallback_utilization:
+        attempts.append(fallback_utilization)
+    last_exc: Exception | None = None
+    last_utilization = gpu_memory_utilization
+    for attempt_idx, utilization in enumerate(attempts):
+        last_utilization = utilization
+        try:
+            run_llm_smoke(utilization)
+            return
+        except Exception as exc:
+            last_exc = exc
+            message = str(exc)
+            can_retry = attempt_idx + 1 < len(attempts)
+            is_engine_zero_division = isinstance(exc, ZeroDivisionError) or (
+                "division by zero" in message and "Engine core initialization failed" in message
+            )
+            if can_retry and is_engine_zero_division:
+                print(
+                    "vllm_load_smoke_retry:",
+                    {
+                        "reason": "engine_zero_division",
+                        "failed_gpu_memory_utilization": utilization,
+                        "next_gpu_memory_utilization": attempts[attempt_idx + 1],
+                    },
+                )
+                gc.collect()
+                continue
+            raise SystemExit(f"vllm_load_smoke_failed: {model_id}\n{type(exc).__name__}: {exc}") from exc
+
+    raise SystemExit(
+        f"vllm_load_smoke_failed: {model_id}\n"
+        f"gpu_memory_utilization={last_utilization}\n"
+        f"{type(last_exc).__name__}: {last_exc}"
+    )
 
 
 def main() -> None:
