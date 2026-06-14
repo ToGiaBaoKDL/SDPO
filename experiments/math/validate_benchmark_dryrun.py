@@ -7,7 +7,7 @@ import argparse
 from pathlib import Path
 
 
-EXPECTED_SNIPPETS = {
+COMMON_SNIPPETS = {
     "base_model": [
         "--config-name sdpo_math_a100",
         "actor_rollout_ref.model.path=Qwen/Qwen3-1.7B",
@@ -15,9 +15,6 @@ EXPECTED_SNIPPETS = {
         "trainer.val_before_train=True",
         "trainer.val_only=True",
         "trainer.validation_data_dir=",
-        "data.train_max_samples=64",
-        "data.train_batch_size=32",
-        "actor_rollout_ref.rollout.agent.num_workers=32",
         "actor_rollout_ref.model.lora_rank=0",
         "actor_rollout_ref.actor.policy_loss.loss_mode=vanilla",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=False",
@@ -29,8 +26,6 @@ EXPECTED_SNIPPETS = {
         "critic.model.path=Qwen/Qwen3-1.7B",
         "trainer.total_training_steps=1",
         "trainer.validation_data_dir=",
-        "data.train_batch_size=32",
-        "actor_rollout_ref.rollout.agent.num_workers=32",
         "actor_rollout_ref.actor.policy_loss.loss_mode=vanilla",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=False",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=False",
@@ -41,8 +36,6 @@ EXPECTED_SNIPPETS = {
         "critic.model.path=Qwen/Qwen3-1.7B",
         "trainer.total_training_steps=1",
         "trainer.validation_data_dir=",
-        "data.train_batch_size=32",
-        "actor_rollout_ref.rollout.agent.num_workers=32",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=True",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=False",
@@ -53,8 +46,6 @@ EXPECTED_SNIPPETS = {
         "critic.model.path=Qwen/Qwen3-1.7B",
         "trainer.total_training_steps=1",
         "trainer.validation_data_dir=",
-        "data.train_batch_size=32",
-        "actor_rollout_ref.rollout.agent.num_workers=32",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=True",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=True",
@@ -65,6 +56,38 @@ FORBIDDEN_SNIPPETS = [
     "data.val_batch_size=",
     "RAY_BACKEND_LOG_LEVEL",
 ]
+
+PROFILE_EXPECTATIONS = {
+    "fast": {
+        "train_batch_size": 32,
+        "agent_workers": 32,
+        "base_model_train_max_samples": 64,
+        "enforce_eager": "True",
+    },
+    "h100_fast": {
+        "train_batch_size": 64,
+        "agent_workers": 128,
+        "base_model_train_max_samples": 128,
+        "enforce_eager": "False",
+    },
+}
+
+
+def expected_snippets(profile: str) -> dict[str, list[str]]:
+    settings = PROFILE_EXPECTATIONS.get(profile)
+    if settings is None:
+        raise AssertionError(
+            f"validate_benchmark_dryrun.py does not know profile={profile}. "
+            f"Known profiles: {sorted(PROFILE_EXPECTATIONS)}"
+        )
+
+    result = {variant: snippets.copy() for variant, snippets in COMMON_SNIPPETS.items()}
+    result["base_model"].append(f"data.train_max_samples={settings['base_model_train_max_samples']}")
+    for snippets in result.values():
+        snippets.append(f"data.train_batch_size={settings['train_batch_size']}")
+        snippets.append(f"actor_rollout_ref.rollout.agent.num_workers={settings['agent_workers']}")
+        snippets.append(f"actor_rollout_ref.rollout.enforce_eager={settings['enforce_eager']}")
+    return result
 
 
 def parse_args() -> argparse.Namespace:
@@ -83,7 +106,7 @@ def main() -> None:
     missing_snippets: list[str] = []
     exp_suffix = args.exp_suffix or f"{args.phase}_{args.profile}_{args.steps}_seed42"
 
-    for variant, snippets in EXPECTED_SNIPPETS.items():
+    for variant, snippets in expected_snippets(args.profile).items():
         path = args.log_dir / f"{variant}_{exp_suffix}.log"
         if not path.exists():
             missing_files.append(str(path))

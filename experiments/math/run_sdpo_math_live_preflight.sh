@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/math_env.sh"
 
 export PHASE="${PHASE:-pilot}"
-export RUN_PROFILE="${RUN_PROFILE:-fast}"
 export VARIANTS="${VARIANTS:-base_model}"
 export TRAIN_STEPS="${TRAIN_STEPS:-1}"
 export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-64}"

@@ -72,11 +72,24 @@ def main() -> None:
         "balanced)",
         "quality)",
         "high_mem_8b|a100_8b)",
+        "h100_fast)",
+        "h100_balanced)",
+        "h100_quality)",
+        "h100_throughput)",
         "TRAIN_BS=32",
+        "TRAIN_BS=48",
+        "TRAIN_BS=64",
+        "AGENT_WORKERS=96",
+        "AGENT_WORKERS=128",
         "AGENT_WORKERS=32",
         "BATCHED_TOKENS=65536",
+        "BATCHED_TOKENS=131072",
+        "BATCHED_TOKENS=196608",
+        "TRAIN_BS=64",
+        "AGENT_WORKERS=128",
+        "ENFORCE_EAGER",
         "effective_rollouts",
-        "actor_rollout_ref.rollout.enforce_eager=True",
+        'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
         "actor_rollout_ref.rollout.val_kwargs.n=1",
         "actor_rollout_ref.rollout.val_kwargs.temperature=0.01",
     ]:
@@ -92,6 +105,7 @@ def main() -> None:
         'bash "${SCRIPT_DIR}/run_sdpo_math_benchmark.sh"',
     ]:
         require_snippet(live_preflight_path, live_preflight, snippet)
+    forbid_snippet(live_preflight_path, live_preflight, 'RUN_PROFILE="${RUN_PROFILE:-fast}"')
 
     setup_path = "experiments/math/setup_math_notebook.sh"
     setup = Path(setup_path).read_text(encoding="utf-8")
@@ -126,6 +140,11 @@ def main() -> None:
         "scale_decision|ablation)",
         "thesis)",
         "scale_8b)",
+        "HARDWARE_PROFILE",
+        "h100_fast",
+        "h100_balanced",
+        "h100_quality",
+        "h100_throughput",
         "ALLOW_CONFIG_OVERRIDE",
         "ALLOW_MODEL_OVERRIDE",
         "Refusing CONFIG_NAME",

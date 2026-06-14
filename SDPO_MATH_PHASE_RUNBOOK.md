@@ -1,12 +1,12 @@
 # SDPO-Math Phase Runbook
 
-Notebook-ready bash for SDPO-Math on 2x A100. Use each `%%bash` block as one notebook cell.
+Notebook-ready bash for SDPO-Math on 2x H100. Use each `%%bash` block as one notebook cell.
 
 Central files:
 
 - `experiments/math/setup_math_notebook.sh`: Python 3.12 uv environment, dependencies, data, CPU checks.
 - `experiments/math/math_env.sh`: repo paths, cache paths, quiet logging, Qwen3 model defaults.
-- `experiments/math/phase_common.sh`: shared A100 profiles and Hydra overrides.
+- `experiments/math/phase_common.sh`: shared 2-GPU profiles and Hydra overrides.
 - `experiments/math/run_sdpo_math_benchmark.sh`: one runner for all benchmark phases.
 
 Do not copy training logic into notebook cells. If a training setting changes, change it in `phase_common.sh` or `run_sdpo_math_benchmark.sh`.
@@ -57,12 +57,14 @@ Training phases evaluate all 4 variants and train only the 3 trainable variants.
 
 Profiles:
 
-- `fast`: Qwen3-1.7B pilot, train batch `32`, rollout `n=4`, workers `32`, response `1024`.
-- `balanced`: Qwen3-4B scale decision, train batch `32`, rollout `n=4`, workers `32`, response `1536`.
-- `quality`: Qwen3-8B thesis default, train batch `24`, rollout `n=4`, workers `32`, response `2048`.
-- `high_mem_8b`: optional faster Qwen3-8B profile, train batch `32`, batched tokens `65536`.
+- `h100_fast`: Qwen3-1.7B pilot, train batch `64`, rollout `n=4`, workers `128`, response `1536`.
+- `h100_balanced`: Qwen3-4B scale decision, train batch `64`, rollout `n=4`, workers `128`, response `2048`.
+- `h100_quality`: Qwen3-8B thesis default, train batch `48`, rollout `n=4`, workers `96`, response `3072`.
+- `h100_throughput`: optional faster Qwen3-8B profile, train batch `64`, workers `128`, response `2048`, batched tokens `196608`.
 
-The A100 profile uses `attn_implementation=sdpa`, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=True`. Keep this default until Phase 4 is stable.
+Set `HARDWARE_PROFILE=h100` in each phase cell. For older 2-GPU A100/L40S runs, set `HARDWARE_PROFILE=a100` and use `fast`, `balanced`, `quality`, or `high_mem_8b`.
+
+The H100 profile uses `attn_implementation=sdpa`, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False` for vLLM CUDA graph speed. If CUDA graph capture fails, set `ENFORCE_EAGER=True` and rerun the same phase.
 
 ## Phase 0: Preflight
 
@@ -74,6 +76,9 @@ set -euo pipefail
 echo "== Phase 0: preflight =="
 cd /root/SDPO
 source experiments/math/math_env.sh
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
+export RUN_PROFILE="${RUN_PROFILE:-h100_fast}"
+export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 
 python experiments/math/verify_hf_models.py \
   --models "$PILOT_MODEL_PATH" "$SCALE_MODEL_PATH" "$THESIS_MODEL_PATH"
@@ -89,7 +94,6 @@ python experiments/math/preflight_phase.py
 
 export DRY_RUN=1
 export PHASE=pilot
-export RUN_PROFILE=fast
 export TRAIN_STEPS=1
 export VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability"
 export RUN_TAG=preflight_dryrun
@@ -99,6 +103,7 @@ export LOG_DIR="$PROJECT_ROOT/logs/sdpo_math_phase/preflight_dryrun"
 bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_preflight_dryrun.log
 python experiments/math/validate_benchmark_dryrun.py \
   --log-dir "$LOG_DIR" \
+  --profile "$RUN_PROFILE" \
   --exp-suffix "$EXP_SUFFIX"
 
 ## Phase 1: Pilot
@@ -113,7 +118,9 @@ cd /root/SDPO
 source experiments/math/math_env.sh
 
 export PHASE=pilot
-export RUN_PROFILE="${RUN_PROFILE:-fast}"
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
+export RUN_PROFILE="${RUN_PROFILE:-h100_fast}"
+export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 export TRAIN_STEPS="${TRAIN_STEPS:-10}"
 export ULTRA_QUIET="${ULTRA_QUIET:-0}"
 
@@ -131,7 +138,9 @@ cd /root/SDPO
 source experiments/math/math_env.sh
 
 export PHASE=scale_decision
-export RUN_PROFILE="${RUN_PROFILE:-balanced}"
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
+export RUN_PROFILE="${RUN_PROFILE:-h100_balanced}"
+export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 export TRAIN_STEPS="${TRAIN_STEPS:-50}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 
@@ -166,7 +175,9 @@ cd /root/SDPO
 source experiments/math/math_env.sh
 
 export PHASE=thesis
-export RUN_PROFILE="${RUN_PROFILE:-quality}"
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
+export RUN_PROFILE="${RUN_PROFILE:-h100_quality}"
+export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 export TRAIN_STEPS="${TRAIN_STEPS:-300}"
 export EVAL_FREQ="${EVAL_FREQ:-100}"
 export SAVE_FREQ="${SAVE_FREQ:-100}"
@@ -187,7 +198,9 @@ cd /root/SDPO
 source experiments/math/math_env.sh
 
 export PHASE=scale_8b
-export RUN_PROFILE=high_mem_8b
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
+export RUN_PROFILE=h100_throughput
+export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 export TRAIN_STEPS="${TRAIN_STEPS:-300}"
 export EVAL_FREQ="${EVAL_FREQ:-100}"
 export SAVE_FREQ="${SAVE_FREQ:-100}"

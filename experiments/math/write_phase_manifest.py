@@ -54,6 +54,7 @@ def main() -> None:
         "git_status_short": git_value(["status", "--short"]),
         "project_root": os.environ.get("PROJECT_ROOT"),
         "phase": args.phase,
+        "hardware_profile": os.environ.get("HARDWARE_PROFILE", "a100"),
         "profile": args.profile,
         "effective_rollouts_per_step": effective_rollouts,
         "profile_settings": {
@@ -68,6 +69,7 @@ def main() -> None:
                 "REPROMPT_LEN",
                 "BATCHED_TOKENS",
                 "GPU_UTIL",
+                "ENFORCE_EAGER",
             ]
         },
         "config_name": args.config_name,

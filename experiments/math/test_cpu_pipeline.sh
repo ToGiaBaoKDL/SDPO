@@ -44,6 +44,17 @@ phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-
 assert "+ray_kwargs.ray_init.log_to_driver=False" in phase_common
 assert "+ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT=" in phase_common
 assert "\n      ray_kwargs.ray_init.log_to_driver=False" not in phase_common
+for snippet in [
+    "h100_fast)",
+    "h100_balanced)",
+    "h100_quality)",
+    "h100_throughput)",
+    "TRAIN_BS=64",
+    "AGENT_WORKERS=128",
+    'ENFORCE_EAGER="${ENFORCE_EAGER:-False}"',
+    'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
+]:
+    assert snippet in phase_common, f"missing H100 profile setting: {snippet}"
 
 quiet_env = Path("experiments/math/common_quiet_env.sh").read_text(encoding="utf-8")
 assert 'VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"' in quiet_env
@@ -185,6 +196,23 @@ bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_cpu_pipeline_d
 
 "${PYTHON_BIN}" experiments/math/validate_benchmark_dryrun.py \
   --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun" \
+  --profile fast \
   --exp-suffix cpu_pipeline_dryrun_seed42
+
+DRY_RUN=1 \
+HARDWARE_PROFILE=h100 \
+PHASE=pilot \
+RUN_PROFILE=h100_fast \
+TRAIN_STEPS=1 \
+VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability" \
+RUN_TAG=cpu_pipeline_h100_dryrun \
+EXP_SUFFIX=cpu_pipeline_h100_dryrun_seed42 \
+LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_h100_dryrun" \
+bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_cpu_pipeline_h100_dryrun.log
+
+"${PYTHON_BIN}" experiments/math/validate_benchmark_dryrun.py \
+  --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_h100_dryrun" \
+  --profile h100_fast \
+  --exp-suffix cpu_pipeline_h100_dryrun_seed42
 
 echo "CPU pipeline checks passed"

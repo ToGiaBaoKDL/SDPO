@@ -21,13 +21,40 @@ SEED="${SEED:-42}"
 VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-1}"
 ALLOW_CONFIG_OVERRIDE="${ALLOW_CONFIG_OVERRIDE:-0}"
 ALLOW_MODEL_OVERRIDE="${ALLOW_MODEL_OVERRIDE:-0}"
+HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
+
+case "${HARDWARE_PROFILE}" in
+  a100|l40s)
+    PILOT_PROFILE_DEFAULT=fast
+    SCALE_PROFILE_DEFAULT=balanced
+    THESIS_PROFILE_DEFAULT=quality
+    THROUGHPUT_PROFILE_DEFAULT=high_mem_8b
+    ;;
+  h100)
+    PILOT_PROFILE_DEFAULT=h100_fast
+    SCALE_PROFILE_DEFAULT=h100_balanced
+    THESIS_PROFILE_DEFAULT=h100_quality
+    THROUGHPUT_PROFILE_DEFAULT=h100_throughput
+    ;;
+  *)
+    echo "Unknown HARDWARE_PROFILE=${HARDWARE_PROFILE}. Use a100, l40s, or h100." >&2
+    exit 1
+    ;;
+esac
 
 case "${PHASE}" in
   pilot)
-    RUN_PROFILE="${RUN_PROFILE:-fast}"
+    RUN_PROFILE="${RUN_PROFILE:-${PILOT_PROFILE_DEFAULT}}"
     MODEL_PATH="${MODEL_PATH:-${PILOT_MODEL_PATH:-Qwen/Qwen3-1.7B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-10}"
-    TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"
+    case "${RUN_PROFILE}" in
+      h100_*)
+        TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-512}"
+        ;;
+      *)
+        TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"
+        ;;
+    esac
     VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
     EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
     SAVE_FREQ="${SAVE_FREQ:--1}"
@@ -35,7 +62,7 @@ case "${PHASE}" in
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Pilot}"
     ;;
   scale_decision|ablation)
-    RUN_PROFILE="${RUN_PROFILE:-balanced}"
+    RUN_PROFILE="${RUN_PROFILE:-${SCALE_PROFILE_DEFAULT}}"
     MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-4B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-50}"
     case "${RUN_PROFILE}" in
@@ -51,8 +78,16 @@ case "${PHASE}" in
         TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-4096}"
         VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"
         ;;
+      h100_fast)
+        TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-2048}"
+        VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
+        ;;
+      h100_balanced|h100_quality)
+        TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-4096}"
+        VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"
+        ;;
       *)
-        echo "PHASE=scale_decision supports RUN_PROFILE=fast, balanced, or quality." >&2
+        echo "PHASE=scale_decision supports RUN_PROFILE=fast, balanced, quality, h100_fast, h100_balanced, or h100_quality." >&2
         exit 1
         ;;
     esac
@@ -62,7 +97,7 @@ case "${PHASE}" in
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-Decision}"
     ;;
   thesis)
-    RUN_PROFILE="${RUN_PROFILE:-quality}"
+    RUN_PROFILE="${RUN_PROFILE:-${THESIS_PROFILE_DEFAULT}}"
     MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-300}"
     TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:--1}"
@@ -73,7 +108,7 @@ case "${PHASE}" in
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Thesis}"
     ;;
   scale_8b)
-    RUN_PROFILE="${RUN_PROFILE:-high_mem_8b}"
+    RUN_PROFILE="${RUN_PROFILE:-${THROUGHPUT_PROFILE_DEFAULT}}"
     MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-300}"
     TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:--1}"
@@ -107,7 +142,7 @@ case "${MODEL_PATH}" in
     ;;
 esac
 
-export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH
+export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH HARDWARE_PROFILE
 export TRAIN_MAX_SAMPLES VAL_MAX_SAMPLES SEED
 
 RUN_TAG="${RUN_TAG:-${PHASE}_${RUN_PROFILE}_${TRAIN_STEPS}_$(date +%Y%m%d_%H%M%S)}"
@@ -122,6 +157,7 @@ fi
 sdpo_math_prepare_phase_run "${RUN_PROFILE}" "${LOG_DIR}"
 
 echo "phase=${PHASE} model=${MODEL_PATH} variants=${VARIANTS} dry_run=${DRY_RUN}"
+echo "hardware=${HARDWARE_PROFILE}"
 echo "steps=${TRAIN_STEPS} train_max=${TRAIN_MAX_SAMPLES} val_max=${VAL_MAX_SAMPLES} eval_freq=${EVAL_FREQ} save_freq=${SAVE_FREQ} seed=${SEED}"
 echo "exp_suffix=${EXP_SUFFIX}"
 echo "logs=${LOG_DIR}"
