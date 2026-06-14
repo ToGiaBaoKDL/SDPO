@@ -37,7 +37,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vllm-tensor-parallel-size", default=1, type=int)
     parser.add_argument("--vllm-max-model-len", default=1024, type=int)
     parser.add_argument("--vllm-gpu-memory-utilization", default=0.70, type=float)
-    parser.add_argument("--vllm-enforce-eager", action="store_true")
+    parser.add_argument("--vllm-enforce-eager", dest="vllm_enforce_eager", action="store_true", default=True)
+    parser.add_argument("--vllm-cuda-graphs", dest="vllm_enforce_eager", action="store_false")
     return parser.parse_args()
 
 

@@ -34,6 +34,7 @@ def main() -> None:
         "val_batch_size": cfg["data"]["val_batch_size"],
         "agent_workers": cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"],
         "max_num_batched_tokens": cfg["actor_rollout_ref"]["rollout"]["max_num_batched_tokens"],
+        "enforce_eager": cfg["actor_rollout_ref"]["rollout"]["enforce_eager"],
         "use_remove_padding": cfg["actor_rollout_ref"]["model"]["use_remove_padding"],
         "dataloader_workers": cfg["data"]["dataloader_num_workers"],
         "filter_workers": cfg["data"]["filter_overlong_prompts_workers"],
@@ -49,6 +50,7 @@ def main() -> None:
     assert checks["val_batch_size"] == 128
     assert checks["agent_workers"] == 32
     assert checks["max_num_batched_tokens"] == 49152
+    assert checks["enforce_eager"] is True
     assert checks["use_remove_padding"] is False
     assert checks["dataloader_workers"] == 0
     assert checks["filter_workers"] == 1
@@ -70,6 +72,7 @@ def main() -> None:
         "AGENT_WORKERS=32",
         "BATCHED_TOKENS=65536",
         "effective_rollouts",
+        "actor_rollout_ref.rollout.enforce_eager=True",
         "actor_rollout_ref.rollout.val_kwargs.n=1",
         "actor_rollout_ref.rollout.val_kwargs.temperature=0.01",
     ]:

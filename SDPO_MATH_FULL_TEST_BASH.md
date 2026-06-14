@@ -175,6 +175,7 @@ config_text = Path("verl/trainer/config/sdpo_math_a100.yaml").read_text(encoding
 for term in ["flash_attention_2", "flash-attn", "flash_attn"]:
     if term in config_text:
         raise SystemExit(f"Unexpected FlashAttention reference in config: {term}")
+assert "enforce_eager: True" in config_text
 
 quiet_text = Path("experiments/math/common_quiet_env.sh").read_text(encoding="utf-8")
 assert 'VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"' in quiet_text
@@ -258,7 +259,8 @@ python experiments/math/verify_hf_models.py \
   --vllm-smoke-model "$SMOKE_MODEL_PATH" \
   --vllm-tensor-parallel-size 1 \
   --vllm-max-model-len 1024 \
-  --vllm-gpu-memory-utilization 0.70
+  --vllm-gpu-memory-utilization 0.70 \
+  --vllm-enforce-eager
 ray stop --force >/dev/null 2>&1 || true
 
 ## 4. Math-Verify Reward Smoke

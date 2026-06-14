@@ -116,6 +116,7 @@ sdpo_math_build_common_overrides() {
     actor_rollout_ref.rollout.agent.num_workers="${AGENT_WORKERS}"
     actor_rollout_ref.rollout.max_model_len="${MODEL_LEN}"
     actor_rollout_ref.rollout.max_num_batched_tokens="${BATCHED_TOKENS}"
+    actor_rollout_ref.rollout.enforce_eager=True
     actor_rollout_ref.rollout.gpu_memory_utilization="${GPU_UTIL}"
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu="${MODEL_LEN}"
     actor_rollout_ref.rollout.val_kwargs.n=1

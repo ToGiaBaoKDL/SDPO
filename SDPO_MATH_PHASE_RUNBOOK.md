@@ -99,6 +99,7 @@ Run after every pull/update before longer experiments.
 The Transformers CUDA load smoke and vLLM engine smoke run in separate Python processes to avoid CUDA-context interference. The vLLM smoke uses `gpu_memory_utilization=0.70` intentionally; lower values can make vLLM report zero available KV-cache blocks and fail during engine startup.
 `math_env.sh` also sets `VLLM_WORKER_MULTIPROC_METHOD=spawn`, matching the repo Dockerfiles and preventing CUDA re-initialization errors in vLLM engine subprocesses.
 The vLLM smoke and validation config use `temperature=0.01` instead of exact zero to avoid a vLLM 0.12 V1 divide-by-zero path while remaining effectively greedy under a fixed seed.
+The math A100 config sets `actor_rollout_ref.rollout.enforce_eager=True` consistently for smoke, validation, and training. This disables vLLM CUDA graph capture because the current vLLM 0.12 V1 stack repeatedly failed during graph-capture startup on this notebook runtime.
 
 %%bash
 set -euo pipefail
@@ -120,7 +121,8 @@ python experiments/math/verify_hf_models.py \
   --vllm-smoke-model "$PILOT_MODEL_PATH" \
   --vllm-tensor-parallel-size 1 \
   --vllm-max-model-len 1024 \
-  --vllm-gpu-memory-utilization 0.70
+  --vllm-gpu-memory-utilization 0.70 \
+  --vllm-enforce-eager
 ray stop --force >/dev/null 2>&1 || true
 
 python experiments/math/preflight_phase.py

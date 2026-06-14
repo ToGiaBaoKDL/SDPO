@@ -62,6 +62,7 @@ assert cfg["data"]["train_batch_size"] == 24
 assert cfg["data"]["val_batch_size"] == 128
 assert cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"] == 32
 assert cfg["actor_rollout_ref"]["rollout"]["max_num_batched_tokens"] == 49152
+assert cfg["actor_rollout_ref"]["rollout"]["enforce_eager"] is True
 assert cfg["actor_rollout_ref"]["rollout"]["val_kwargs"]["temperature"] == 0.01
 assert cfg["actor_rollout_ref"]["model"]["lora_rank"] > 0
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_weighting"] is False
