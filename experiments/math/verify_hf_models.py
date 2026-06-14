@@ -34,7 +34,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--vllm-tensor-parallel-size", default=1, type=int)
     parser.add_argument("--vllm-max-model-len", default=1024, type=int)
-    parser.add_argument("--vllm-gpu-memory-utilization", default=0.25, type=float)
+    parser.add_argument("--vllm-gpu-memory-utilization", default=0.70, type=float)
+    parser.add_argument("--vllm-enforce-eager", action="store_true")
     return parser.parse_args()
 
 
@@ -143,6 +144,7 @@ def load_vllm_smoke(
     tensor_parallel_size: int,
     max_model_len: int,
     gpu_memory_utilization: float,
+    enforce_eager: bool,
 ) -> None:
     try:
         numpy_version = metadata.version("numpy")
@@ -177,7 +179,7 @@ def load_vllm_smoke(
             max_model_len=max_model_len,
             gpu_memory_utilization=utilization,
             dtype="auto",
-            enforce_eager=True,
+            enforce_eager=enforce_eager,
         )
         outputs = llm.generate(["What is 1+1? Answer briefly."], SamplingParams(max_tokens=8, temperature=0.0))
         text = outputs[0].outputs[0].text if outputs and outputs[0].outputs else ""
@@ -188,6 +190,7 @@ def load_vllm_smoke(
                 "tensor_parallel_size": tensor_parallel_size,
                 "max_model_len": max_model_len,
                 "gpu_memory_utilization": utilization,
+                "enforce_eager": enforce_eager,
                 "sample": text.strip(),
             },
         )
@@ -195,7 +198,7 @@ def load_vllm_smoke(
         gc.collect()
 
     attempts = [gpu_memory_utilization]
-    fallback_utilization = 0.50
+    fallback_utilization = 0.75
     if gpu_memory_utilization < fallback_utilization:
         attempts.append(fallback_utilization)
     last_exc: Exception | None = None
@@ -250,6 +253,7 @@ def main() -> None:
             tensor_parallel_size=args.vllm_tensor_parallel_size,
             max_model_len=args.vllm_max_model_len,
             gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+            enforce_eager=args.vllm_enforce_eager,
         )
 
 

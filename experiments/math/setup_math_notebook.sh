@@ -17,7 +17,7 @@ RUN_TRANSFORMERS_LOAD_SMOKE="${RUN_TRANSFORMERS_LOAD_SMOKE:-0}"
 RUN_VLLM_LOAD_SMOKE="${RUN_VLLM_LOAD_SMOKE:-0}"
 VLLM_SMOKE_TP="${VLLM_SMOKE_TP:-1}"
 VLLM_SMOKE_MAX_MODEL_LEN="${VLLM_SMOKE_MAX_MODEL_LEN:-1024}"
-VLLM_SMOKE_GPU_UTIL="${VLLM_SMOKE_GPU_UTIL:-0.50}"
+VLLM_SMOKE_GPU_UTIL="${VLLM_SMOKE_GPU_UTIL:-0.70}"
 
 if [[ "${SDPO_PYTHON_VERSION}" != 3.12* && "${ALLOW_UNTESTED_PYTHON}" != "1" ]]; then
   cat >&2 <<EOF
@@ -108,19 +108,20 @@ print("math_verify_available:", int(importlib.util.find_spec("math_verify") is n
 PY
 
 if [[ "${VERIFY_HF_MODELS}" == "1" ]]; then
-  VERIFY_ARGS=(--models "${SMOKE_MODEL_PATH}" "${SCALE_MODEL_PATH}" "${THESIS_MODEL_PATH}")
+  python experiments/math/verify_hf_models.py --models "${SMOKE_MODEL_PATH}" "${SCALE_MODEL_PATH}" "${THESIS_MODEL_PATH}"
   if [[ "${RUN_TRANSFORMERS_LOAD_SMOKE}" == "1" ]]; then
-    VERIFY_ARGS+=(--load-smoke-model "${PILOT_MODEL_PATH}")
+    python experiments/math/verify_hf_models.py --models "${PILOT_MODEL_PATH}" --load-smoke-model "${PILOT_MODEL_PATH}"
   fi
   if [[ "${RUN_VLLM_LOAD_SMOKE}" == "1" ]]; then
-    VERIFY_ARGS+=(
-      --vllm-smoke-model "${PILOT_MODEL_PATH}"
-      --vllm-tensor-parallel-size "${VLLM_SMOKE_TP}"
-      --vllm-max-model-len "${VLLM_SMOKE_MAX_MODEL_LEN}"
+    ray stop --force >/dev/null 2>&1 || true
+    python experiments/math/verify_hf_models.py \
+      --models "${PILOT_MODEL_PATH}" \
+      --vllm-smoke-model "${PILOT_MODEL_PATH}" \
+      --vllm-tensor-parallel-size "${VLLM_SMOKE_TP}" \
+      --vllm-max-model-len "${VLLM_SMOKE_MAX_MODEL_LEN}" \
       --vllm-gpu-memory-utilization "${VLLM_SMOKE_GPU_UTIL}"
-    )
+    ray stop --force >/dev/null 2>&1 || true
   fi
-  python experiments/math/verify_hf_models.py "${VERIFY_ARGS[@]}"
 fi
 
 if [[ "${PREPARE_DATA}" == "1" && ! -f data/dapo_math_en/train.parquet ]]; then
