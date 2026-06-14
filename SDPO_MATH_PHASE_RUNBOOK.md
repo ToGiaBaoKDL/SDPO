@@ -1,6 +1,6 @@
 # SDPO-Math Phase Runbook
 
-Notebook-ready commands for SDPO-Math on 2 GPUs. Default hardware is 2x A100. For 2x H100, set `HARDWARE_PROFILE=h100`.
+Notebook-ready commands for SDPO-Math on 2 GPUs. Default hardware is 2x A100-80GB. For 2x H100, set `HARDWARE_PROFILE=h100`.
 
 Central files:
 
@@ -34,14 +34,14 @@ Profile settings are selected by `HARDWARE_PROFILE`:
 
 | Hardware | Profile | Train batch | Rollout n | Workers | Response | Model len | vLLM util |
 |---|---|---:|---:|---:|---:|---:|---:|
-| A100 | `fast` | 48 | 4 | 64 | 1536 | 5120 | 0.82 |
-| A100 | `balanced` | 48 | 4 | 64 | 2048 | 6144 | 0.82 |
-| A100 | `quality` | 32 | 4 | 64 | 2560 | 7168 | 0.82 |
+| A100-80GB | `fast` | 64 | 4 | 128 | 1536 | 5120 | 0.90 |
+| A100-80GB | `balanced` | 64 | 4 | 128 | 2048 | 6144 | 0.90 |
+| A100-80GB | `quality` | 48 | 4 | 96 | 3072 | 8192 | 0.90 |
 | H100 | `fast` | 64 | 4 | 128 | 1536 | 5120 | 0.92 |
 | H100 | `balanced` | 64 | 4 | 128 | 2048 | 6144 | 0.93 |
 | H100 | `quality` | 48 | 4 | 96 | 3072 | 8192 | 0.93 |
 
-Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. A100 defaults target 40GB cards; if vLLM still reports insufficient free memory, rerun with `GPU_UTIL=0.80`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
+Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. A100 defaults target 80GB cards; if vLLM reports insufficient free memory, rerun with `GPU_UTIL=0.86`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
 
 ## Setup
 

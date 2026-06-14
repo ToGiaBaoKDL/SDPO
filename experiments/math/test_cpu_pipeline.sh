@@ -51,7 +51,7 @@ for snippet in [
     "h100:fast)",
     "h100:balanced)",
     "h100:quality)",
-    "AGENT_WORKERS=64",
+    "AGENT_WORKERS=96",
     "TRAIN_BS=64",
     "AGENT_WORKERS=128",
     'ENFORCE_EAGER="${ENFORCE_EAGER:-False}"',

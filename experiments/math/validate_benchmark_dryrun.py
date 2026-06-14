@@ -59,10 +59,10 @@ FORBIDDEN_SNIPPETS = [
 
 PROFILE_EXPECTATIONS = {
     ("a100", "fast"): {
-        "train_batch_size": 48,
-        "agent_workers": 64,
-        "base_model_train_max_samples": 96,
-        "gpu_util": "0.82",
+        "train_batch_size": 64,
+        "agent_workers": 128,
+        "base_model_train_max_samples": 128,
+        "gpu_util": "0.90",
         "enforce_eager": "False",
     },
     ("h100", "fast"): {
