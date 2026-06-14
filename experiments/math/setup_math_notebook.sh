@@ -11,6 +11,13 @@ INSTALL_MATH_VERIFY="${INSTALL_MATH_VERIFY:-1}"
 PREPARE_DATA="${PREPARE_DATA:-1}"
 RUN_CPU_CHECK="${RUN_CPU_CHECK:-1}"
 VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-1}"
+INSTALL_QWEN35_TRANSFORMERS="${INSTALL_QWEN35_TRANSFORMERS:-1}"
+QWEN35_TRANSFORMERS_SPEC="${QWEN35_TRANSFORMERS_SPEC:-git+https://github.com/huggingface/transformers.git}"
+RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE="${RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE:-1}"
+RUN_QWEN35_VLLM_LOAD_SMOKE="${RUN_QWEN35_VLLM_LOAD_SMOKE:-1}"
+QWEN35_VLLM_SMOKE_TP="${QWEN35_VLLM_SMOKE_TP:-1}"
+QWEN35_VLLM_SMOKE_MAX_MODEL_LEN="${QWEN35_VLLM_SMOKE_MAX_MODEL_LEN:-1024}"
+QWEN35_VLLM_SMOKE_GPU_UTIL="${QWEN35_VLLM_SMOKE_GPU_UTIL:-0.25}"
 
 if [[ "${SDPO_PYTHON_VERSION}" != 3.12* && "${ALLOW_UNTESTED_PYTHON}" != "1" ]]; then
   cat >&2 <<EOF
@@ -30,6 +37,9 @@ echo "sdpo_python_version=${SDPO_PYTHON_VERSION}"
 echo "install_math_verify=${INSTALL_MATH_VERIFY}"
 echo "prepare_data=${PREPARE_DATA}"
 echo "verify_hf_models=${VERIFY_HF_MODELS}"
+echo "install_qwen35_transformers=${INSTALL_QWEN35_TRANSFORMERS}"
+echo "run_qwen35_transformers_load_smoke=${RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE}"
+echo "run_qwen35_vllm_load_smoke=${RUN_QWEN35_VLLM_LOAD_SMOKE}"
 
 if [[ -x .venv/bin/python ]]; then
   EXISTING_PYTHON_VERSION="$(
@@ -62,24 +72,42 @@ uv pip install -q -U pip
 uv pip install -q pyyaml pyarrow pandas datasets
 uv pip install -q -e ".[vllm]"
 
+if [[ "${INSTALL_QWEN35_TRANSFORMERS}" == "1" ]]; then
+  echo "Installing Qwen3.5-compatible Transformers from ${QWEN35_TRANSFORMERS_SPEC}"
+  uv pip install -q -U "${QWEN35_TRANSFORMERS_SPEC}"
+fi
+
 if [[ "${INSTALL_MATH_VERIFY}" == "1" ]]; then
   uv pip install -q "math-verify[antlr4_9_3]==0.8.0"
 fi
 
 python - <<'PY'
 import importlib.util
+import transformers
 
 required = ["torch", "ray", "transformers", "vllm", "datasets", "pyarrow"]
 missing = [name for name in required if importlib.util.find_spec(name) is None]
 if missing:
     raise SystemExit(f"missing dependencies: {missing}")
 print("deps_ok:", ", ".join(required))
+print("transformers_version:", transformers.__version__)
 print("math_verify_available:", int(importlib.util.find_spec("math_verify") is not None))
 PY
 
 if [[ "${VERIFY_HF_MODELS}" == "1" ]]; then
-  python experiments/math/verify_hf_models.py \
-    --models "${SMOKE_MODEL_PATH}" "${SCALE_MODEL_PATH}" "${THESIS_MODEL_PATH}"
+  VERIFY_ARGS=(--models "${SMOKE_MODEL_PATH}" "${SCALE_MODEL_PATH}" "${THESIS_MODEL_PATH}")
+  if [[ "${RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE}" == "1" ]]; then
+    VERIFY_ARGS+=(--load-smoke-model "${PILOT_MODEL_PATH}")
+  fi
+  if [[ "${RUN_QWEN35_VLLM_LOAD_SMOKE}" == "1" ]]; then
+    VERIFY_ARGS+=(
+      --vllm-smoke-model "${PILOT_MODEL_PATH}"
+      --vllm-tensor-parallel-size "${QWEN35_VLLM_SMOKE_TP}"
+      --vllm-max-model-len "${QWEN35_VLLM_SMOKE_MAX_MODEL_LEN}"
+      --vllm-gpu-memory-utilization "${QWEN35_VLLM_SMOKE_GPU_UTIL}"
+    )
+  fi
+  python experiments/math/verify_hf_models.py "${VERIFY_ARGS[@]}"
 fi
 
 if [[ "${PREPARE_DATA}" == "1" && ! -f data/dapo_math_en/train.parquet ]]; then

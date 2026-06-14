@@ -8,52 +8,52 @@ sdpo_math_configure_profile() {
 
   case "${profile}" in
     fast)
-      TRAIN_BS=16
+      TRAIN_BS=32
       ROLLOUT_N=4
-      AGENT_WORKERS=16
-      VAL_BS=64
+      AGENT_WORKERS=32
+      VAL_BS=128
       RESPONSE_LEN=1024
       MODEL_LEN=4096
       ACTOR_LEN=4096
       REPROMPT_LEN=2048
-      BATCHED_TOKENS=16384
-      GPU_UTIL=0.78
+      BATCHED_TOKENS=32768
+      GPU_UTIL=0.82
       ;;
     balanced)
-      TRAIN_BS=16
+      TRAIN_BS=32
       ROLLOUT_N=4
-      AGENT_WORKERS=16
-      VAL_BS=64
+      AGENT_WORKERS=32
+      VAL_BS=128
       RESPONSE_LEN=1536
       MODEL_LEN=5120
       ACTOR_LEN=6144
       REPROMPT_LEN=3072
-      BATCHED_TOKENS=24576
-      GPU_UTIL=0.82
+      BATCHED_TOKENS=49152
+      GPU_UTIL=0.86
       ;;
     quality)
-      TRAIN_BS=16
-      ROLLOUT_N=4
-      AGENT_WORKERS=16
-      VAL_BS=64
-      RESPONSE_LEN=2048
-      MODEL_LEN=6144
-      ACTOR_LEN=8192
-      REPROMPT_LEN=4096
-      BATCHED_TOKENS=32768
-      GPU_UTIL=0.85
-      ;;
-    high_mem_9b|a100_9b)
       TRAIN_BS=24
       ROLLOUT_N=4
-      AGENT_WORKERS=24
-      VAL_BS=64
+      AGENT_WORKERS=32
+      VAL_BS=128
       RESPONSE_LEN=2048
       MODEL_LEN=6144
       ACTOR_LEN=8192
       REPROMPT_LEN=4096
       BATCHED_TOKENS=49152
       GPU_UTIL=0.88
+      ;;
+    high_mem_9b|a100_9b)
+      TRAIN_BS=32
+      ROLLOUT_N=4
+      AGENT_WORKERS=32
+      VAL_BS=128
+      RESPONSE_LEN=2048
+      MODEL_LEN=6144
+      ACTOR_LEN=8192
+      REPROMPT_LEN=4096
+      BATCHED_TOKENS=65536
+      GPU_UTIL=0.90
       ;;
     *)
       echo "Unknown RUN_PROFILE=${profile}. Use fast, balanced, quality, or high_mem_9b." >&2
@@ -136,5 +136,5 @@ sdpo_math_prepare_phase_run() {
   sdpo_math_init_logging "${log_dir}"
   sdpo_math_build_common_overrides
 
-  echo "profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} agent_workers=${AGENT_WORKERS} val_bs=${VAL_BS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS}"
+  echo "profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} val_bs=${VAL_BS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS}"
 }

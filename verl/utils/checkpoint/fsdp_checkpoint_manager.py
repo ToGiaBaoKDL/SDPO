@@ -315,11 +315,21 @@ class FSDPCheckpointManager(BaseCheckpointManager):
 
                     auto_model_cls = AutoModelForCausalLM
                 elif "ForConditionalGeneration" in model_config.architectures[0]:
-                    # Handle different transformers versions for Vision2Seq models
+                    # Handle different transformers versions for multimodal conditional-generation models.
                     import transformers
                     from packaging import version
 
-                    if version.parse(transformers.__version__) >= version.parse("4.54.0"):
+                    try:
+                        from transformers import AutoModelForMultimodalLM
+                    except ImportError:
+                        AutoModelForMultimodalLM = None
+
+                    if (
+                        AutoModelForMultimodalLM is not None
+                        and type(model_config) in AutoModelForMultimodalLM._model_mapping.keys()
+                    ):
+                        auto_model_cls = AutoModelForMultimodalLM
+                    elif version.parse(transformers.__version__) >= version.parse("4.54.0"):
                         # transformers >= 4.54.0 uses AutoModelForImageTextToText
                         from transformers import AutoModelForImageTextToText
 

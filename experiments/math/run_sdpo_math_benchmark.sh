@@ -19,6 +19,8 @@ VARIANTS="${VARIANTS:-base_model base_rl sdpo_vanilla sdpo_reliability}"
 DRY_RUN="${DRY_RUN:-0}"
 SEED="${SEED:-42}"
 VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-1}"
+ALLOW_CONFIG_OVERRIDE="${ALLOW_CONFIG_OVERRIDE:-0}"
+ALLOW_MODEL_OVERRIDE="${ALLOW_MODEL_OVERRIDE:-0}"
 
 case "${PHASE}" in
   pilot)
@@ -87,6 +89,24 @@ case "${PHASE}" in
     ;;
 esac
 
+if [[ "${CONFIG_NAME}" != "sdpo_math_a100" && "${ALLOW_CONFIG_OVERRIDE}" != "1" ]]; then
+  echo "Refusing CONFIG_NAME=${CONFIG_NAME}. SDPO-Math thesis phases must use sdpo_math_a100." >&2
+  echo "Set ALLOW_CONFIG_OVERRIDE=1 only for an intentional compatibility experiment." >&2
+  exit 1
+fi
+
+case "${MODEL_PATH}" in
+  Qwen/Qwen3.5-2B|Qwen/Qwen3.5-4B|Qwen/Qwen3.5-9B)
+    ;;
+  *)
+    if [[ "${ALLOW_MODEL_OVERRIDE}" != "1" ]]; then
+      echo "Refusing MODEL_PATH=${MODEL_PATH}. SDPO-Math thesis phases are locked to Qwen3.5 2B/4B/9B." >&2
+      echo "Set ALLOW_MODEL_OVERRIDE=1 only for a deliberate non-thesis experiment." >&2
+      exit 1
+    fi
+    ;;
+esac
+
 export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH
 export TRAIN_MAX_SAMPLES VAL_MAX_SAMPLES SEED
 
@@ -94,6 +114,10 @@ RUN_TAG="${RUN_TAG:-${PHASE}_${RUN_PROFILE}_${TRAIN_STEPS}_$(date +%Y%m%d_%H%M%S
 EXP_SUFFIX="${EXP_SUFFIX:-${RUN_TAG}_seed${SEED}}"
 LOG_DIR="${LOG_DIR:-${PROJECT_ROOT}/logs/sdpo_math_phase/${RUN_TAG}}"
 mkdir -p "${LOG_DIR}"
+if [[ "${PHASE}" == "thesis" && "${DRY_RUN}" != "1" ]]; then
+  mkdir -p "${PROJECT_ROOT}/logs/sdpo_math_phase"
+  printf "%s\n" "${LOG_DIR}" > "${PROJECT_ROOT}/logs/sdpo_math_phase/latest_thesis_log_dir.txt"
+fi
 
 sdpo_math_prepare_phase_run "${RUN_PROFILE}" "${LOG_DIR}"
 

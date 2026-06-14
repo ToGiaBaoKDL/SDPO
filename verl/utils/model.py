@@ -30,7 +30,6 @@ from transformers import (
     AutoConfig,
     AutoModel,
     AutoModelForCausalLM,
-    AutoModelForImageTextToText,
     AutoModelForSequenceClassification,
     AutoModelForTokenClassification,
     AutoModelForVision2Seq,
@@ -40,6 +39,16 @@ from transformers import (
     PreTrainedModel,
 )
 from transformers.modeling_outputs import CausalLMOutputWithPast
+
+try:
+    from transformers import AutoModelForImageTextToText
+except ImportError:  # Older Transformers builds do not expose this class.
+    AutoModelForImageTextToText = None
+
+try:
+    from transformers import AutoModelForMultimodalLM
+except ImportError:  # Older Transformers builds do not expose this class.
+    AutoModelForMultimodalLM = None
 
 from verl.models.registry import ModelRegistry
 from verl.utils.import_utils import is_trl_available
@@ -619,7 +628,7 @@ def patch_valuehead_model(model) -> None:
 
 
 def load_valuehead_model(local_path, torch_dtype, model_config, trust_remote_code):
-    from transformers import AutoModelForCausalLM, AutoModelForTokenClassification, AutoModelForVision2Seq
+    from transformers import AutoModelForTokenClassification
 
     try:
         model = AutoModelForTokenClassification.from_pretrained(
@@ -640,10 +649,7 @@ def load_valuehead_model(local_path, torch_dtype, model_config, trust_remote_cod
 
     from trl import AutoModelForCausalLMWithValueHead
 
-    if type(model_config) in AutoModelForVision2Seq._model_mapping.keys():
-        module_class = AutoModelForVision2Seq
-    else:
-        module_class = AutoModelForCausalLM
+    module_class = get_hf_auto_model_class(model_config)
     ori_model = module_class.from_pretrained(
         pretrained_model_name_or_path=local_path,
         torch_dtype=torch_dtype,
@@ -662,6 +668,8 @@ _architecture_to_auto_class = {
     "ForTokenClassification": AutoModelForTokenClassification,
     "ForSequenceClassification": AutoModelForSequenceClassification,
 }
+if AutoModelForMultimodalLM is not None:
+    _architecture_to_auto_class["ForMultimodalLM"] = AutoModelForMultimodalLM
 
 
 def get_hf_auto_model_class(hf_config):
@@ -675,14 +683,24 @@ def get_hf_auto_model_class(hf_config):
                 actor_module_class = AutoModelForVision2Seq
             case "AutoModelForCausalLM":
                 actor_module_class = AutoModelForCausalLM
-            case "AutoModelForImageTextToText":
+            case "AutoModelForMultimodalLM" if AutoModelForMultimodalLM is not None:
+                actor_module_class = AutoModelForMultimodalLM
+            case "AutoModelForImageTextToText" if AutoModelForImageTextToText is not None:
                 actor_module_class = AutoModelForImageTextToText
             case _:
                 actor_module_class = AutoModel
     else:
         actor_module_class = AutoModel
         # For VLM models, we use type to check instead of architecture
-        if type(hf_config) in AutoModelForImageTextToText._model_mapping.keys():
+        if (
+            AutoModelForMultimodalLM is not None
+            and type(hf_config) in AutoModelForMultimodalLM._model_mapping.keys()
+        ):
+            actor_module_class = AutoModelForMultimodalLM
+        elif (
+            AutoModelForImageTextToText is not None
+            and type(hf_config) in AutoModelForImageTextToText._model_mapping.keys()
+        ):
             actor_module_class = AutoModelForImageTextToText
         else:
             for key, cls in _architecture_to_auto_class.items():

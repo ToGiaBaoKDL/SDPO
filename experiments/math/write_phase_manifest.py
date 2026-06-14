@@ -39,6 +39,15 @@ def git_value(args: list[str]) -> str | None:
 
 def main() -> None:
     args = parse_args()
+    train_bs = os.environ.get("TRAIN_BS")
+    rollout_n = os.environ.get("ROLLOUT_N")
+    effective_rollouts = None
+    if train_bs is not None and rollout_n is not None:
+        try:
+            effective_rollouts = int(train_bs) * int(rollout_n)
+        except ValueError:
+            effective_rollouts = None
+
     payload = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit": git_value(["rev-parse", "HEAD"]),
@@ -46,6 +55,7 @@ def main() -> None:
         "project_root": os.environ.get("PROJECT_ROOT"),
         "phase": args.phase,
         "profile": args.profile,
+        "effective_rollouts_per_step": effective_rollouts,
         "profile_settings": {
             key.lower(): os.environ.get(key)
             for key in [
@@ -72,6 +82,8 @@ def main() -> None:
         "seed": args.seed,
         "exp_suffix": args.exp_suffix,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        "allow_config_override": os.environ.get("ALLOW_CONFIG_OVERRIDE", "0"),
+        "allow_model_override": os.environ.get("ALLOW_MODEL_OVERRIDE", "0"),
         "log_dir": str(args.log_dir),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

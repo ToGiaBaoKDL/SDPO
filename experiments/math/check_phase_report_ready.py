@@ -17,6 +17,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log-dir", required=True, type=Path)
     parser.add_argument("--require-checkpoints", action="store_true")
+    parser.add_argument("--expect-phase")
+    parser.add_argument("--expect-model")
+    parser.add_argument("--expect-profile")
+    parser.add_argument("--expect-seed", type=int)
     return parser.parse_args()
 
 
@@ -39,6 +43,17 @@ def main() -> None:
     require(manifest["model"], "manifest missing model")
     require(manifest.get("config_name") == "sdpo_math_a100", f"unexpected config_name: {manifest.get('config_name')}")
     require(manifest.get("profile_settings"), "manifest missing profile_settings")
+    require(manifest.get("allow_config_override", "0") == "0", "config override guard was disabled")
+    require(manifest.get("allow_model_override", "0") == "0", "model override guard was disabled")
+    require(manifest.get("effective_rollouts_per_step"), "manifest missing effective_rollouts_per_step")
+    if args.expect_phase:
+        require(manifest.get("phase") == args.expect_phase, f"unexpected phase: {manifest.get('phase')}")
+    if args.expect_model:
+        require(manifest.get("model") == args.expect_model, f"unexpected model: {manifest.get('model')}")
+    if args.expect_profile:
+        require(manifest.get("profile") == args.expect_profile, f"unexpected profile: {manifest.get('profile')}")
+    if args.expect_seed is not None:
+        require(manifest.get("seed") == args.expect_seed, f"unexpected seed: {manifest.get('seed')}")
 
     rows = list(csv.DictReader(summary_path.open(encoding="utf-8")))
     variants = {row["variant"] for row in rows}

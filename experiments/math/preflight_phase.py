@@ -30,6 +30,10 @@ def main() -> None:
         "critic_attn": cfg["critic"]["model"]["override_config"]["attn_implementation"],
         "actor_model": cfg["actor_rollout_ref"]["model"]["path"],
         "critic_model": cfg["critic"]["model"]["path"],
+        "train_batch_size": cfg["data"]["train_batch_size"],
+        "val_batch_size": cfg["data"]["val_batch_size"],
+        "agent_workers": cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"],
+        "max_num_batched_tokens": cfg["actor_rollout_ref"]["rollout"]["max_num_batched_tokens"],
         "use_remove_padding": cfg["actor_rollout_ref"]["model"]["use_remove_padding"],
         "dataloader_workers": cfg["data"]["dataloader_num_workers"],
         "filter_workers": cfg["data"]["filter_overlong_prompts_workers"],
@@ -41,6 +45,10 @@ def main() -> None:
     assert checks["critic_attn"] == "sdpa"
     assert checks["actor_model"] == "Qwen/Qwen3.5-9B"
     assert checks["critic_model"] == "Qwen/Qwen3.5-9B"
+    assert checks["train_batch_size"] == 24
+    assert checks["val_batch_size"] == 128
+    assert checks["agent_workers"] == 32
+    assert checks["max_num_batched_tokens"] == 49152
     assert checks["use_remove_padding"] is False
     assert checks["dataloader_workers"] == 0
     assert checks["filter_workers"] == 1
@@ -58,8 +66,10 @@ def main() -> None:
         "balanced)",
         "quality)",
         "high_mem_9b|a100_9b)",
-        "AGENT_WORKERS=16",
-        "BATCHED_TOKENS=32768",
+        "TRAIN_BS=32",
+        "AGENT_WORKERS=32",
+        "BATCHED_TOKENS=65536",
+        "effective_rollouts",
         "actor_rollout_ref.rollout.val_kwargs.n=1",
     ]:
         require_snippet(phase_common_path, phase_common, snippet)
@@ -81,6 +91,10 @@ def main() -> None:
         "scale_decision|ablation)",
         "thesis)",
         "scale_9b)",
+        "ALLOW_CONFIG_OVERRIDE",
+        "ALLOW_MODEL_OVERRIDE",
+        "Refusing CONFIG_NAME",
+        "Refusing MODEL_PATH",
         "--config-name \"${CONFIG_NAME}\"",
         "trainer.validation_data_dir",
         "DRY_RUN",

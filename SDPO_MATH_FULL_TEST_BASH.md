@@ -15,9 +15,9 @@ and the 9B model for the main thesis path.
 Qwen3.5 requires an installed Transformers/vLLM stack that recognizes
 `model_type=qwen3_5`. The runtime sanity cell uses
 `experiments/math/verify_hf_models.py` to check both Hugging Face access and
-Transformers `AutoConfig` compatibility before any Ray/FSDP training starts.
-If that check fails, upgrade the model stack and re-run the verifier before
-starting GPU training.
+Transformers `AutoConfig` compatibility, a real Transformers load smoke, and a
+small vLLM load smoke before any Ray/FSDP training starts. If that check fails,
+upgrade the model stack and re-run the verifier before starting GPU training.
 
 The default path uses `attn_implementation=sdpa` so setup is fast and avoids
 local FlashAttention builds.
@@ -85,13 +85,16 @@ source experiments/math/common_quiet_env.sh
 uv pip install -q -U pip
 uv pip install -q pyyaml pyarrow pandas datasets
 uv pip install -q -e ".[vllm]"
+uv pip install -q -U "git+https://github.com/huggingface/transformers.git"
 uv pip install -q "math-verify[antlr4_9_3]==0.8.0"
 python - <<'PY'
 import importlib.util
+import transformers
 required = ["torch", "ray", "transformers", "vllm", "datasets", "pyarrow", "math_verify"]
 for name in required:
     assert importlib.util.find_spec(name), f"missing {name}"
 print("deps_ok:", ", ".join(required))
+print("transformers_version:", transformers.__version__)
 PY
 
 ## 2.1 Attention Preflight
@@ -113,16 +116,22 @@ with open("verl/trainer/config/sdpo_math_a100.yaml", encoding="utf-8") as f:
 actor_attn = cfg["actor_rollout_ref"]["model"]["override_config"]["attn_implementation"]
 critic_attn = cfg["critic"]["model"]["override_config"]["attn_implementation"]
 agent_workers = cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"]
+train_batch_size = cfg["data"]["train_batch_size"]
+val_batch_size = cfg["data"]["val_batch_size"]
+batched_tokens = cfg["actor_rollout_ref"]["rollout"]["max_num_batched_tokens"]
 use_remove_padding = cfg["actor_rollout_ref"]["model"]["use_remove_padding"]
 dataloader_workers = cfg["data"]["dataloader_num_workers"]
 filter_workers = cfg["data"]["filter_overlong_prompts_workers"]
 print("config_attention:", {"actor": actor_attn, "critic": critic_attn})
-print("config_agent_workers:", agent_workers)
+print("config_batching:", {"train_batch_size": train_batch_size, "val_batch_size": val_batch_size, "agent_workers": agent_workers, "batched_tokens": batched_tokens})
 print("config_use_remove_padding:", use_remove_padding)
 print("config_data_workers:", {"dataloader": dataloader_workers, "filter": filter_workers})
 assert actor_attn == "sdpa", actor_attn
 assert critic_attn == "sdpa", critic_attn
-assert agent_workers == 16, agent_workers
+assert train_batch_size == 24, train_batch_size
+assert val_batch_size == 128, val_batch_size
+assert agent_workers == 32, agent_workers
+assert batched_tokens == 49152, batched_tokens
 assert use_remove_padding is False, use_remove_padding
 assert dataloader_workers == 0, dataloader_workers
 assert filter_workers == 1, filter_workers
@@ -156,7 +165,7 @@ for path in [
     Path("experiments/math/run_sdpo_math_reliability.sh"),
 ]:
     text = path.read_text(encoding="utf-8")
-    assert 'AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-16}"' in text, path
+    assert 'AGENT_NUM_WORKERS="${AGENT_NUM_WORKERS:-32}"' in text, path
 
 config_text = Path("verl/trainer/config/sdpo_math_a100.yaml").read_text(encoding="utf-8")
 for term in ["flash_attention_2", "flash-attn", "flash_attn"]:
@@ -228,7 +237,12 @@ assert torch.cuda.device_count() >= 2, "Expected at least 2 visible GPUs"
 PY
 
 python experiments/math/verify_hf_models.py \
-  --models "$SMOKE_MODEL_PATH" "$SCALE_MODEL_PATH" "$THESIS_MODEL_PATH"
+  --models "$SMOKE_MODEL_PATH" "$SCALE_MODEL_PATH" "$THESIS_MODEL_PATH" \
+  --load-smoke-model "$SMOKE_MODEL_PATH" \
+  --vllm-smoke-model "$SMOKE_MODEL_PATH" \
+  --vllm-tensor-parallel-size 1 \
+  --vllm-max-model-len 1024 \
+  --vllm-gpu-memory-utilization 0.25
 
 ## 4. Math-Verify Reward Smoke
 

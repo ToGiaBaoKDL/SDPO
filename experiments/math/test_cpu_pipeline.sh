@@ -55,6 +55,10 @@ with open("verl/trainer/config/sdpo_math_a100.yaml", encoding="utf-8") as f:
 assert cfg["actor_rollout_ref"]["actor"]["policy_loss"]["loss_mode"] == "sdpo"
 assert cfg["actor_rollout_ref"]["model"]["path"] == "Qwen/Qwen3.5-9B"
 assert cfg["critic"]["model"]["path"] == "Qwen/Qwen3.5-9B"
+assert cfg["data"]["train_batch_size"] == 24
+assert cfg["data"]["val_batch_size"] == 128
+assert cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"] == 32
+assert cfg["actor_rollout_ref"]["rollout"]["max_num_batched_tokens"] == 49152
 assert cfg["actor_rollout_ref"]["model"]["lora_rank"] > 0
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_weighting"] is False
 assert cfg["trainer"]["n_gpus_per_node"] == 2
