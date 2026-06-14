@@ -11,7 +11,7 @@ Validation in these phases uses `data/dapo_math_en/val.parquet`, the held-out DA
 
 ## Required Setup
 
-Use a fresh clone at `/root/SDPO` and pull the latest code before running phases. The setup script creates a Python 3.12 uv venv, installs the project with vLLM, installs `math-verify`, verifies the Hugging Face model ids and Transformers architecture support, prepares the English DAPO-Math split if missing, and runs CPU/data checks. It does not load model weights by default unless `RUN_VLLM_LOAD_SMOKE=1`; Phase 0 performs the real Transformers/vLLM load smoke.
+Use a fresh clone at `/root/SDPO` and pull the latest code before running phases. The setup script creates a Python 3.12 uv venv, installs the project with vLLM, pins NumPy to a numba-compatible version, installs `math-verify`, verifies the Hugging Face model ids and Transformers architecture support, prepares the English DAPO-Math split if missing, and runs CPU/data checks. It does not load model weights by default unless `RUN_VLLM_LOAD_SMOKE=1`; Phase 0 performs the real Transformers/vLLM load smoke.
 
 Run once per notebook VM:
 
@@ -26,9 +26,23 @@ unset PYTHON_VERSION
 export SDPO_PYTHON_VERSION=3.12
 bash experiments/math/setup_math_notebook.sh
 
-Useful setup flags: `PREPARE_DATA=0` skips data creation, `RUN_CPU_CHECK=0` skips CPU checks, `VERIFY_HF_MODELS=0` skips Hugging Face model checks, `RUN_TRANSFORMERS_LOAD_SMOKE=1` adds a setup-time Transformers load smoke, `RUN_VLLM_LOAD_SMOKE=1` adds a setup-time vLLM load smoke, and `INSTALL_MATH_VERIFY=0` skips `math-verify` installation. For thesis runs, keep `INSTALL_MATH_VERIFY=1`.
+Useful setup flags: `PREPARE_DATA=0` skips data creation, `RUN_CPU_CHECK=0` skips CPU checks, `VERIFY_HF_MODELS=0` skips Hugging Face model checks, `RUN_TRANSFORMERS_LOAD_SMOKE=1` adds a setup-time Transformers load smoke, `RUN_VLLM_LOAD_SMOKE=1` adds a setup-time vLLM load smoke, `NUMPY_SPEC=numpy==2.1.0` controls the NumPy runtime pin, and `INSTALL_MATH_VERIFY=0` skips `math-verify` installation. For thesis runs, keep `INSTALL_MATH_VERIFY=1`.
 
 The runbook uses only the Qwen3 text checkpoints listed below.
+
+If Phase 0 fails with `Numba needs NumPy 2.2 or less. Got NumPy 2.4`, repair the existing venv with:
+
+%%bash
+set -euo pipefail
+
+cd /root/SDPO
+source .venv/bin/activate
+uv pip install -q -U "numpy==2.1.0"
+python - <<'PY'
+import importlib.metadata as metadata
+print("numpy:", metadata.version("numpy"))
+print("numba:", metadata.version("numba"))
+PY
 
 The setup script intentionally uses `SDPO_PYTHON_VERSION`, not the generic notebook variable `PYTHON_VERSION`. Use Python 3.12 unless you intentionally set `ALLOW_UNTESTED_PYTHON=1`.
 

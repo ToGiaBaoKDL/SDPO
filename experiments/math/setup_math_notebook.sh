@@ -12,6 +12,7 @@ PREPARE_DATA="${PREPARE_DATA:-1}"
 RUN_CPU_CHECK="${RUN_CPU_CHECK:-1}"
 VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-1}"
 STABLE_TRANSFORMERS_SPEC="${STABLE_TRANSFORMERS_SPEC:-transformers==4.57.1}"
+NUMPY_SPEC="${NUMPY_SPEC:-numpy==2.1.0}"
 RUN_TRANSFORMERS_LOAD_SMOKE="${RUN_TRANSFORMERS_LOAD_SMOKE:-0}"
 RUN_VLLM_LOAD_SMOKE="${RUN_VLLM_LOAD_SMOKE:-0}"
 VLLM_SMOKE_TP="${VLLM_SMOKE_TP:-1}"
@@ -37,6 +38,7 @@ echo "install_math_verify=${INSTALL_MATH_VERIFY}"
 echo "prepare_data=${PREPARE_DATA}"
 echo "verify_hf_models=${VERIFY_HF_MODELS}"
 echo "stable_transformers_spec=${STABLE_TRANSFORMERS_SPEC}"
+echo "numpy_spec=${NUMPY_SPEC}"
 echo "run_transformers_load_smoke=${RUN_TRANSFORMERS_LOAD_SMOKE}"
 echo "run_vllm_load_smoke=${RUN_VLLM_LOAD_SMOKE}"
 
@@ -73,6 +75,8 @@ uv pip install -q -e ".[vllm]"
 
 echo "Installing stable Transformers ${STABLE_TRANSFORMERS_SPEC}"
 uv pip install -q -U "${STABLE_TRANSFORMERS_SPEC}"
+echo "Installing NumPy runtime pin ${NUMPY_SPEC}"
+uv pip install -q -U "${NUMPY_SPEC}"
 
 if [[ "${INSTALL_MATH_VERIFY}" == "1" ]]; then
   uv pip install -q "math-verify[antlr4_9_3]==0.8.0"
@@ -80,7 +84,9 @@ fi
 
 python - <<'PY'
 import importlib.util
+import importlib.metadata as metadata
 import transformers
+from packaging.version import Version
 
 required = ["torch", "ray", "transformers", "vllm", "datasets", "pyarrow"]
 missing = [name for name in required if importlib.util.find_spec(name) is None]
@@ -88,8 +94,13 @@ if missing:
     raise SystemExit(f"missing dependencies: {missing}")
 print("deps_ok:", ", ".join(required))
 print("transformers_version:", transformers.__version__)
+numpy_version = metadata.version("numpy")
+numba_version = metadata.version("numba") if importlib.util.find_spec("numba") else "not_installed"
+print("numpy_version:", numpy_version)
+print("numba_version:", numba_version)
+if Version(numpy_version) >= Version("2.3"):
+    raise SystemExit(f"numpy {numpy_version} is incompatible with numba/vLLM; expected numpy<2.3")
 try:
-    import importlib.metadata as metadata
     print("vllm_version:", metadata.version("vllm"))
 except Exception as exc:
     print("vllm_version_unavailable:", type(exc).__name__)

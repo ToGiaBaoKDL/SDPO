@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from huggingface_hub import model_info
+from packaging.version import Version
 from transformers import AutoConfig
 
 from verl.utils.model import get_hf_auto_model_class
@@ -143,6 +144,20 @@ def load_vllm_smoke(
     max_model_len: int,
     gpu_memory_utilization: float,
 ) -> None:
+    try:
+        numpy_version = metadata.version("numpy")
+        numba_version = metadata.version("numba")
+    except metadata.PackageNotFoundError:
+        numpy_version = ""
+        numba_version = ""
+    if numpy_version and Version(numpy_version) >= Version("2.3"):
+        raise SystemExit(
+            "vllm_numpy_numba_incompatible:\n"
+            f"numpy={numpy_version}, numba={numba_version or 'not_installed'}\n"
+            "vLLM imports numba in this stack, and numba requires NumPy 2.2 or less. "
+            'Run: uv pip install -q -U "numpy==2.1.0"'
+        )
+
     try:
         from vllm import LLM, SamplingParams
     except Exception as exc:

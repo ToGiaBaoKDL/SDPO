@@ -85,16 +85,20 @@ source experiments/math/common_quiet_env.sh
 uv pip install -q -U pip
 uv pip install -q pyyaml pyarrow pandas datasets
 uv pip install -q -e ".[vllm]"
-uv pip install -q -U "git+https://github.com/huggingface/transformers.git"
+uv pip install -q -U "transformers==4.57.1"
+uv pip install -q -U "numpy==2.1.0"
 uv pip install -q "math-verify[antlr4_9_3]==0.8.0"
 python - <<'PY'
 import importlib.util
+import importlib.metadata as metadata
 import transformers
 required = ["torch", "ray", "transformers", "vllm", "datasets", "pyarrow", "math_verify"]
 for name in required:
     assert importlib.util.find_spec(name), f"missing {name}"
 print("deps_ok:", ", ".join(required))
 print("transformers_version:", transformers.__version__)
+print("numpy_version:", metadata.version("numpy"))
+print("numba_version:", metadata.version("numba") if importlib.util.find_spec("numba") else "not_installed")
 PY
 
 ## 2.1 Attention Preflight
@@ -219,6 +223,8 @@ nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv
 
 python - <<'PY'
 import platform
+import importlib.util
+import importlib.metadata as metadata
 import torch
 import ray
 import vllm
@@ -231,6 +237,8 @@ print("torch:", torch.__version__)
 print("ray:", ray.__version__)
 print("transformers:", transformers.__version__)
 print("vllm:", vllm.__version__)
+print("numpy:", metadata.version("numpy"))
+print("numba:", metadata.version("numba") if importlib.util.find_spec("numba") else "not_installed")
 
 assert torch.cuda.is_available(), "CUDA is not visible"
 assert torch.cuda.device_count() >= 2, "Expected at least 2 visible GPUs"
