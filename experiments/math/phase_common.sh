@@ -5,57 +5,55 @@ source "${SCRIPT_DIR}/common_quiet_env.sh"
 
 sdpo_math_configure_profile() {
   local profile="${1:?profile required}"
+  local hardware="${HARDWARE_PROFILE:-a100}"
 
-  case "${profile}" in
-    fast)
-      TRAIN_BS=32
-      ROLLOUT_N=4
-      AGENT_WORKERS=32
-      RESPONSE_LEN=1024
-      MODEL_LEN=4096
-      ACTOR_LEN=4096
-      REPROMPT_LEN=2048
-      BATCHED_TOKENS=32768
-      GPU_UTIL=0.82
-      ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
+  case "${hardware}" in
+    a100|h100)
       ;;
-    balanced)
-      TRAIN_BS=32
+    *)
+      echo "Unknown HARDWARE_PROFILE=${hardware}. Use a100 or h100." >&2
+      return 1
+      ;;
+  esac
+
+  case "${hardware}:${profile}" in
+    a100:fast)
+      TRAIN_BS=48
       ROLLOUT_N=4
-      AGENT_WORKERS=32
+      AGENT_WORKERS=64
       RESPONSE_LEN=1536
       MODEL_LEN=5120
       ACTOR_LEN=6144
       REPROMPT_LEN=3072
-      BATCHED_TOKENS=49152
-      GPU_UTIL=0.86
-      ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
-      ;;
-    quality)
-      TRAIN_BS=24
-      ROLLOUT_N=4
-      AGENT_WORKERS=32
-      RESPONSE_LEN=2048
-      MODEL_LEN=6144
-      ACTOR_LEN=8192
-      REPROMPT_LEN=4096
-      BATCHED_TOKENS=49152
-      GPU_UTIL=0.88
-      ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
-      ;;
-    high_mem_8b|a100_8b)
-      TRAIN_BS=32
-      ROLLOUT_N=4
-      AGENT_WORKERS=32
-      RESPONSE_LEN=2048
-      MODEL_LEN=6144
-      ACTOR_LEN=8192
-      REPROMPT_LEN=4096
       BATCHED_TOKENS=65536
       GPU_UTIL=0.90
-      ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
+      ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
-    h100_fast)
+    a100:balanced)
+      TRAIN_BS=48
+      ROLLOUT_N=4
+      AGENT_WORKERS=64
+      RESPONSE_LEN=2048
+      MODEL_LEN=6144
+      ACTOR_LEN=8192
+      REPROMPT_LEN=4096
+      BATCHED_TOKENS=98304
+      GPU_UTIL=0.91
+      ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
+      ;;
+    a100:quality)
+      TRAIN_BS=32
+      ROLLOUT_N=4
+      AGENT_WORKERS=64
+      RESPONSE_LEN=2560
+      MODEL_LEN=7168
+      ACTOR_LEN=9216
+      REPROMPT_LEN=4608
+      BATCHED_TOKENS=98304
+      GPU_UTIL=0.91
+      ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
+      ;;
+    h100:fast)
       TRAIN_BS=64
       ROLLOUT_N=4
       AGENT_WORKERS=128
@@ -67,7 +65,7 @@ sdpo_math_configure_profile() {
       GPU_UTIL=0.92
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
-    h100_balanced)
+    h100:balanced)
       TRAIN_BS=64
       ROLLOUT_N=4
       AGENT_WORKERS=128
@@ -79,7 +77,7 @@ sdpo_math_configure_profile() {
       GPU_UTIL=0.93
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
-    h100_quality)
+    h100:quality)
       TRAIN_BS=48
       ROLLOUT_N=4
       AGENT_WORKERS=96
@@ -91,20 +89,8 @@ sdpo_math_configure_profile() {
       GPU_UTIL=0.93
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
-    h100_throughput)
-      TRAIN_BS=64
-      ROLLOUT_N=4
-      AGENT_WORKERS=128
-      RESPONSE_LEN=2048
-      MODEL_LEN=6144
-      ACTOR_LEN=8192
-      REPROMPT_LEN=4096
-      BATCHED_TOKENS=196608
-      GPU_UTIL=0.94
-      ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
-      ;;
     *)
-      echo "Unknown RUN_PROFILE=${profile}. Use fast, balanced, quality, high_mem_8b, h100_fast, h100_balanced, h100_quality, or h100_throughput." >&2
+      echo "Unknown RUN_PROFILE=${profile}. Use fast, balanced, or quality." >&2
       return 1
       ;;
   esac
@@ -184,5 +170,5 @@ sdpo_math_prepare_phase_run() {
   sdpo_math_init_logging "${log_dir}"
   sdpo_math_build_common_overrides
 
-  echo "profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} enforce_eager=${ENFORCE_EAGER}"
+  echo "hardware=${HARDWARE_PROFILE:-a100} profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} enforce_eager=${ENFORCE_EAGER}"
 }

@@ -45,10 +45,13 @@ assert "+ray_kwargs.ray_init.log_to_driver=False" in phase_common
 assert "+ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT=" in phase_common
 assert "\n      ray_kwargs.ray_init.log_to_driver=False" not in phase_common
 for snippet in [
-    "h100_fast)",
-    "h100_balanced)",
-    "h100_quality)",
-    "h100_throughput)",
+    "a100:fast)",
+    "a100:balanced)",
+    "a100:quality)",
+    "h100:fast)",
+    "h100:balanced)",
+    "h100:quality)",
+    "AGENT_WORKERS=64",
     "TRAIN_BS=64",
     "AGENT_WORKERS=128",
     'ENFORCE_EAGER="${ENFORCE_EAGER:-False}"',
@@ -185,8 +188,8 @@ PY
 
 echo "[5/5] Checking benchmark variant dry-run"
 DRY_RUN=1 \
+HARDWARE_PROFILE=a100 \
 PHASE=pilot \
-RUN_PROFILE=fast \
 TRAIN_STEPS=1 \
 VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability" \
 RUN_TAG=cpu_pipeline_dryrun \
@@ -196,13 +199,13 @@ bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_cpu_pipeline_d
 
 "${PYTHON_BIN}" experiments/math/validate_benchmark_dryrun.py \
   --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun" \
+  --hardware-profile a100 \
   --profile fast \
   --exp-suffix cpu_pipeline_dryrun_seed42
 
 DRY_RUN=1 \
 HARDWARE_PROFILE=h100 \
 PHASE=pilot \
-RUN_PROFILE=h100_fast \
 TRAIN_STEPS=1 \
 VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability" \
 RUN_TAG=cpu_pipeline_h100_dryrun \
@@ -212,7 +215,8 @@ bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_cpu_pipeline_h
 
 "${PYTHON_BIN}" experiments/math/validate_benchmark_dryrun.py \
   --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_h100_dryrun" \
-  --profile h100_fast \
+  --hardware-profile h100 \
+  --profile fast \
   --exp-suffix cpu_pipeline_h100_dryrun_seed42
 
 echo "CPU pipeline checks passed"

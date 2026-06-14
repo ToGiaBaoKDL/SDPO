@@ -83,8 +83,6 @@ def main() -> None:
         "seed": args.seed,
         "exp_suffix": args.exp_suffix,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
-        "allow_config_override": os.environ.get("ALLOW_CONFIG_OVERRIDE", "0"),
-        "allow_model_override": os.environ.get("ALLOW_MODEL_OVERRIDE", "0"),
         "log_dir": str(args.log_dir),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

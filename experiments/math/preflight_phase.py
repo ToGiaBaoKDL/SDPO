@@ -68,25 +68,20 @@ def main() -> None:
     phase_common_path = "experiments/math/phase_common.sh"
     phase_common = Path(phase_common_path).read_text(encoding="utf-8")
     for snippet in [
-        "fast)",
-        "balanced)",
-        "quality)",
-        "high_mem_8b|a100_8b)",
-        "h100_fast)",
-        "h100_balanced)",
-        "h100_quality)",
-        "h100_throughput)",
+        "a100:fast)",
+        "a100:balanced)",
+        "a100:quality)",
+        "h100:fast)",
+        "h100:balanced)",
+        "h100:quality)",
         "TRAIN_BS=32",
         "TRAIN_BS=48",
         "TRAIN_BS=64",
+        "AGENT_WORKERS=64",
         "AGENT_WORKERS=96",
         "AGENT_WORKERS=128",
-        "AGENT_WORKERS=32",
         "BATCHED_TOKENS=65536",
         "BATCHED_TOKENS=131072",
-        "BATCHED_TOKENS=196608",
-        "TRAIN_BS=64",
-        "AGENT_WORKERS=128",
         "ENFORCE_EAGER",
         "effective_rollouts",
         'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
@@ -94,7 +89,6 @@ def main() -> None:
         "actor_rollout_ref.rollout.val_kwargs.temperature=0.01",
     ]:
         require_snippet(phase_common_path, phase_common, snippet)
-
     live_preflight_path = "experiments/math/run_sdpo_math_live_preflight.sh"
     live_preflight = Path(live_preflight_path).read_text(encoding="utf-8")
     for snippet in [
@@ -137,16 +131,12 @@ def main() -> None:
         )
 
     for snippet in [
-        "scale_decision|ablation)",
+        "scale_decision)",
         "thesis)",
-        "scale_8b)",
         "HARDWARE_PROFILE",
-        "h100_fast",
-        "h100_balanced",
-        "h100_quality",
-        "h100_throughput",
-        "ALLOW_CONFIG_OVERRIDE",
-        "ALLOW_MODEL_OVERRIDE",
+        "RUN_PROFILE=fast",
+        "RUN_PROFILE=balanced",
+        "RUN_PROFILE=quality",
         "Refusing CONFIG_NAME",
         "Refusing MODEL_PATH",
         "--config-name \"${CONFIG_NAME}\"",

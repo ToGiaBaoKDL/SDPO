@@ -1,17 +1,47 @@
 # SDPO-Math Phase Runbook
 
-Notebook-ready bash for SDPO-Math on 2x H100. Use each `%%bash` block as one notebook cell.
+Notebook-ready commands for SDPO-Math on 2 GPUs. Default hardware is 2x A100. For 2x H100, set `HARDWARE_PROFILE=h100`.
 
 Central files:
 
 - `experiments/math/setup_math_notebook.sh`: Python 3.12 uv environment, dependencies, data, CPU checks.
-- `experiments/math/math_env.sh`: repo paths, cache paths, quiet logging, Qwen3 model defaults.
-- `experiments/math/phase_common.sh`: shared 2-GPU profiles and Hydra overrides.
+- `experiments/math/math_env.sh`: repo paths, cache paths, quiet logging, Qwen3 defaults.
+- `experiments/math/phase_common.sh`: hardware-optimized `fast`, `balanced`, `quality` profiles.
 - `experiments/math/run_sdpo_math_benchmark.sh`: one runner for all benchmark phases.
 
-Do not copy training logic into notebook cells. If a training setting changes, change it in `phase_common.sh` or `run_sdpo_math_benchmark.sh`.
+Do not copy Hydra override blocks into notebooks. If a training setting changes, change the shell scripts first.
 
-Validation in this runbook uses `data/dapo_math_en/val.parquet`, the held-out English DAPO-Math split. AIME/MathArena are external benchmarks and are not part of these phase commands yet.
+## Fixed Shape
+
+Models:
+
+| Phase | Model | Profile |
+|---|---|---|
+| Pilot | `Qwen/Qwen3-1.7B` | `fast` |
+| Scale decision | `Qwen/Qwen3-4B` | `balanced` |
+| Thesis | `Qwen/Qwen3-8B` | `quality` |
+
+Variants:
+
+| Variant | Meaning |
+|---|---|
+| `base_model` | frozen validation baseline, no training, no LoRA |
+| `base_rl` | GRPO/RL baseline with vanilla policy loss |
+| `sdpo_vanilla` | feedback-enabled SDPO baseline |
+| `sdpo_reliability` | SDPO+ with reliability-weighted SDPO targets |
+
+Profile settings are selected by `HARDWARE_PROFILE`:
+
+| Hardware | Profile | Train batch | Rollout n | Workers | Response | Model len |
+|---|---|---:|---:|---:|---:|---:|
+| A100 | `fast` | 48 | 4 | 64 | 1536 | 5120 |
+| A100 | `balanced` | 48 | 4 | 64 | 2048 | 6144 |
+| A100 | `quality` | 32 | 4 | 64 | 2560 | 7168 |
+| H100 | `fast` | 64 | 4 | 128 | 1536 | 5120 |
+| H100 | `balanced` | 64 | 4 | 128 | 2048 | 6144 |
+| H100 | `quality` | 48 | 4 | 96 | 3072 | 8192 |
+
+Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
 
 ## Setup
 
@@ -26,6 +56,7 @@ git pull
 chmod +x experiments/math/*.sh experiments/math/*.py
 unset PYTHON_VERSION
 export SDPO_PYTHON_VERSION=3.12
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 bash experiments/math/setup_math_notebook.sh
 
 Useful setup flags:
@@ -33,38 +64,8 @@ Useful setup flags:
 - `PREPARE_DATA=0`: skip data creation.
 - `RUN_CPU_CHECK=0`: skip CPU checks.
 - `VERIFY_HF_MODELS=0`: skip Hugging Face model checks.
-- `RUN_TRANSFORMERS_LOAD_SMOKE=1`: add a setup-time Transformers load smoke.
-- `INSTALL_MATH_VERIFY=0`: skip `math-verify`; keep it enabled for thesis runs.
-
-The setup script does not run standalone `vllm.LLM(...)`. Phase 0 validates the real VERL/vLLM trainer path.
-
-## Fixed Experiment Shape
-
-Models:
-
-- Pilot: `Qwen/Qwen3-1.7B`.
-- Scale decision: `Qwen/Qwen3-4B`.
-- Thesis: `Qwen/Qwen3-8B`.
-
-Variants:
-
-- `base_model`: frozen model validation, no training, no LoRA.
-- `base_rl`: GRPO/RL baseline with vanilla policy loss.
-- `sdpo_vanilla`: feedback-enabled SDPO baseline.
-- `sdpo_reliability`: SDPO+ with reliability-weighted SDPO targets.
-
-Training phases evaluate all 4 variants and train only the 3 trainable variants. Thesis tables should compare all 4 under the same model, seed, validation split, decoding, and profile.
-
-Profiles:
-
-- `h100_fast`: Qwen3-1.7B pilot, train batch `64`, rollout `n=4`, workers `128`, response `1536`.
-- `h100_balanced`: Qwen3-4B scale decision, train batch `64`, rollout `n=4`, workers `128`, response `2048`.
-- `h100_quality`: Qwen3-8B thesis default, train batch `48`, rollout `n=4`, workers `96`, response `3072`.
-- `h100_throughput`: optional faster Qwen3-8B profile, train batch `64`, workers `128`, response `2048`, batched tokens `196608`.
-
-Set `HARDWARE_PROFILE=h100` in each phase cell. For older 2-GPU A100/L40S runs, set `HARDWARE_PROFILE=a100` and use `fast`, `balanced`, `quality`, or `high_mem_8b`.
-
-The H100 profile uses `attn_implementation=sdpa`, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False` for vLLM CUDA graph speed. If CUDA graph capture fails, set `ENFORCE_EAGER=True` and rerun the same phase.
+- `RUN_TRANSFORMERS_LOAD_SMOKE=1`: add a Transformers load smoke.
+- `INSTALL_MATH_VERIFY=0`: skip `math-verify`; keep it enabled for thesis.
 
 ## Phase 0: Preflight
 
@@ -76,8 +77,7 @@ set -euo pipefail
 echo "== Phase 0: preflight =="
 cd /root/SDPO
 source experiments/math/math_env.sh
-export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
-export RUN_PROFILE="${RUN_PROFILE:-h100_fast}"
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 
 python experiments/math/verify_hf_models.py \
@@ -103,12 +103,13 @@ export LOG_DIR="$PROJECT_ROOT/logs/sdpo_math_phase/preflight_dryrun"
 bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_preflight_dryrun.log
 python experiments/math/validate_benchmark_dryrun.py \
   --log-dir "$LOG_DIR" \
-  --profile "$RUN_PROFILE" \
+  --hardware-profile "$HARDWARE_PROFILE" \
+  --profile fast \
   --exp-suffix "$EXP_SUFFIX"
 
 ## Phase 1: Pilot
 
-Confirms the full benchmark shape on Qwen3-1.7B.
+Full benchmark shape on Qwen3-1.7B.
 
 %%bash
 set -euo pipefail
@@ -118,8 +119,7 @@ cd /root/SDPO
 source experiments/math/math_env.sh
 
 export PHASE=pilot
-export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
-export RUN_PROFILE="${RUN_PROFILE:-h100_fast}"
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 export TRAIN_STEPS="${TRAIN_STEPS:-10}"
 export ULTRA_QUIET="${ULTRA_QUIET:-0}"
@@ -128,7 +128,7 @@ bash experiments/math/run_sdpo_math_benchmark.sh
 
 ## Phase 2: Scale Decision
 
-Uses Qwen3-4B to decide whether the 8B thesis profile is stable enough to run.
+Qwen3-4B stability run before thesis scale.
 
 %%bash
 set -euo pipefail
@@ -138,15 +138,14 @@ cd /root/SDPO
 source experiments/math/math_env.sh
 
 export PHASE=scale_decision
-export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
-export RUN_PROFILE="${RUN_PROFILE:-h100_balanced}"
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 export TRAIN_STEPS="${TRAIN_STEPS:-50}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
 
-Scale up only if all variants finish, SDPO logs `self_distillation/reprompt_sample_fraction`, `sdpo_vanilla` sometimes uses feedback, and `sdpo_reliability` logs reliability metrics without reward collapse.
+Move to thesis only if all variants finish, SDPO logs reprompt and feedback-used metrics, and `sdpo_reliability` logs reliability weights without reward collapse.
 
 ## Phase 3: Inspect
 
@@ -165,7 +164,7 @@ python experiments/math/summarize_phase_results.py --log-dir "$LOG_DIR" || true
 
 ## Phase 4: Thesis
 
-Main Qwen3-8B comparison. This is the run to report.
+Main Qwen3-8B comparison.
 
 %%bash
 set -euo pipefail
@@ -175,8 +174,7 @@ cd /root/SDPO
 source experiments/math/math_env.sh
 
 export PHASE=thesis
-export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
-export RUN_PROFILE="${RUN_PROFILE:-h100_quality}"
+export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 export TRAIN_STEPS="${TRAIN_STEPS:-300}"
 export EVAL_FREQ="${EVAL_FREQ:-100}"
@@ -186,37 +184,14 @@ export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
 
-## Phase 5: Optional Throughput
+## Phase 5: Report Check
 
-Run only after Phase 4 is stable. Same Qwen3-8B benchmark, larger profile.
-
-%%bash
-set -euo pipefail
-
-echo "== Phase 5: high-mem 8B =="
-cd /root/SDPO
-source experiments/math/math_env.sh
-
-export PHASE=scale_8b
-export HARDWARE_PROFILE="${HARDWARE_PROFILE:-h100}"
-export RUN_PROFILE=h100_throughput
-export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
-export TRAIN_STEPS="${TRAIN_STEPS:-300}"
-export EVAL_FREQ="${EVAL_FREQ:-100}"
-export SAVE_FREQ="${SAVE_FREQ:-100}"
-export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
-export ULTRA_QUIET="${ULTRA_QUIET:-1}"
-
-bash experiments/math/run_sdpo_math_benchmark.sh
-
-## Phase 6: Report Check
-
-Run after Phase 4 and before writing results.
+Run after Phase 4 before writing results.
 
 %%bash
 set -euo pipefail
 
-echo "== Phase 6: report check =="
+echo "== Phase 5: report check =="
 cd /root/SDPO
 source experiments/math/math_env.sh
 
@@ -240,12 +215,8 @@ cat "$LOG_DIR/summary.md"
 
 ## Report Notes
 
-Required metrics:
+Primary metric: `val-core/math_dapo/acc/mean@1`.
 
-- Main accuracy: `val-core/math_dapo/acc/mean@1`.
-- Reward: `val-aux/math_dapo/reward/mean@1`.
-- Format diagnostics: incorrect format and truncation.
-- SDPO diagnostics: reprompt fraction, feedback-used fraction, reliability weight mean.
-- System diagnostics: throughput, seed, profile, model, git commit from `manifest.json`.
+Report reward, incorrect format rate, truncation rate, SDPO reprompt fraction, feedback-used fraction, reliability weight mean, throughput, seed, profile, model, hardware profile, git commit, validation dumps, and checkpoint paths.
 
-For a thesis or arXiv claim, add at least one external held-out benchmark such as AIME/MathArena and repeat the thesis run with multiple seeds if compute allows.
+For a thesis or arXiv-level claim, add at least one external held-out math benchmark such as AIME/MathArena and repeat the thesis run with multiple seeds if compute allows.

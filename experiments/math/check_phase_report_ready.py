@@ -43,8 +43,6 @@ def main() -> None:
     require(manifest["model"], "manifest missing model")
     require(manifest.get("config_name") == "sdpo_math_a100", f"unexpected config_name: {manifest.get('config_name')}")
     require(manifest.get("profile_settings"), "manifest missing profile_settings")
-    require(manifest.get("allow_config_override", "0") == "0", "config override guard was disabled")
-    require(manifest.get("allow_model_override", "0") == "0", "model override guard was disabled")
     require(manifest.get("effective_rollouts_per_step"), "manifest missing effective_rollouts_per_step")
     if args.expect_phase:
         require(manifest.get("phase") == args.expect_phase, f"unexpected phase: {manifest.get('phase')}")

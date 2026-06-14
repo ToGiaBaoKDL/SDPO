@@ -58,13 +58,13 @@ FORBIDDEN_SNIPPETS = [
 ]
 
 PROFILE_EXPECTATIONS = {
-    "fast": {
-        "train_batch_size": 32,
-        "agent_workers": 32,
-        "base_model_train_max_samples": 64,
-        "enforce_eager": "True",
+    ("a100", "fast"): {
+        "train_batch_size": 48,
+        "agent_workers": 64,
+        "base_model_train_max_samples": 96,
+        "enforce_eager": "False",
     },
-    "h100_fast": {
+    ("h100", "fast"): {
         "train_batch_size": 64,
         "agent_workers": 128,
         "base_model_train_max_samples": 128,
@@ -73,12 +73,13 @@ PROFILE_EXPECTATIONS = {
 }
 
 
-def expected_snippets(profile: str) -> dict[str, list[str]]:
-    settings = PROFILE_EXPECTATIONS.get(profile)
+def expected_snippets(hardware_profile: str, profile: str) -> dict[str, list[str]]:
+    settings = PROFILE_EXPECTATIONS.get((hardware_profile, profile))
     if settings is None:
         raise AssertionError(
-            f"validate_benchmark_dryrun.py does not know profile={profile}. "
-            f"Known profiles: {sorted(PROFILE_EXPECTATIONS)}"
+            "validate_benchmark_dryrun.py does not know "
+            f"hardware_profile={hardware_profile} profile={profile}. "
+            f"Known combinations: {sorted(PROFILE_EXPECTATIONS)}"
         )
 
     result = {variant: snippets.copy() for variant, snippets in COMMON_SNIPPETS.items()}
@@ -94,6 +95,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log-dir", required=True, type=Path)
     parser.add_argument("--phase", default="pilot")
+    parser.add_argument("--hardware-profile", default="a100")
     parser.add_argument("--profile", default="fast")
     parser.add_argument("--steps", default="1")
     parser.add_argument("--exp-suffix")
@@ -106,7 +108,7 @@ def main() -> None:
     missing_snippets: list[str] = []
     exp_suffix = args.exp_suffix or f"{args.phase}_{args.profile}_{args.steps}_seed42"
 
-    for variant, snippets in expected_snippets(args.profile).items():
+    for variant, snippets in expected_snippets(args.hardware_profile, args.profile).items():
         path = args.log_dir / f"{variant}_{exp_suffix}.log"
         if not path.exists():
             missing_files.append(str(path))
