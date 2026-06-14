@@ -164,6 +164,7 @@ run_with_log() {
 run_base_model_val() {
   local exp_name="$1"
   shift
+  local base_model_train_max_samples="${BASE_MODEL_TRAIN_MAX_SAMPLES:-$((TRAIN_BS * 2))}"
   run_with_log "${exp_name}" \
     python3 -m verl.trainer.main_ppo \
       --config-name "${CONFIG_NAME}" \
@@ -176,7 +177,7 @@ run_base_model_val() {
       trainer.val_only=True \
       trainer.save_freq=-1 \
       trainer.validation_data_dir="${LOG_DIR}/validation/${exp_name}" \
-      data.train_max_samples=8 \
+      data.train_max_samples="${base_model_train_max_samples}" \
       data.val_max_samples="${VAL_MAX_SAMPLES}" \
       actor_rollout_ref.model.lora_rank=0 \
       actor_rollout_ref.model.lora_alpha=16 \

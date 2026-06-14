@@ -15,6 +15,7 @@ EXPECTED_SNIPPETS = {
         "trainer.val_before_train=True",
         "trainer.val_only=True",
         "trainer.validation_data_dir=",
+        "data.train_max_samples=64",
         "data.train_batch_size=32",
         "actor_rollout_ref.rollout.agent.num_workers=32",
         "actor_rollout_ref.model.lora_rank=0",

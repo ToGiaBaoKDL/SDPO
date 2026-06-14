@@ -87,6 +87,8 @@ def main() -> None:
     live_preflight = Path(live_preflight_path).read_text(encoding="utf-8")
     for snippet in [
         'VARIANTS="${VARIANTS:-base_model}"',
+        'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-64}"',
+        'BASE_MODEL_TRAIN_MAX_SAMPLES="${BASE_MODEL_TRAIN_MAX_SAMPLES:-64}"',
         'VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-8}"',
         'bash "${SCRIPT_DIR}/run_sdpo_math_benchmark.sh"',
     ]:
@@ -132,6 +134,7 @@ def main() -> None:
         "--config-name \"${CONFIG_NAME}\"",
         "trainer.validation_data_dir",
         "DRY_RUN",
+        "BASE_MODEL_TRAIN_MAX_SAMPLES",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
     ]:
         require_snippet(runner_path, runner, snippet)
