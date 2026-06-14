@@ -27,16 +27,16 @@ bash -n \
 from pathlib import Path
 
 expected_defaults = {
-    "experiments/math/run_sdpo_math_smoke.sh": "Qwen/Qwen3.5-2B",
-    "experiments/math/run_sdpo_math_vanilla.sh": "Qwen/Qwen3.5-9B",
-    "experiments/math/run_sdpo_math_reliability.sh": "Qwen/Qwen3.5-9B",
+    "experiments/math/run_sdpo_math_smoke.sh": "Qwen/Qwen3-1.7B",
+    "experiments/math/run_sdpo_math_vanilla.sh": "Qwen/Qwen3-8B",
+    "experiments/math/run_sdpo_math_reliability.sh": "Qwen/Qwen3-8B",
 }
 for path, expected in expected_defaults.items():
     text = Path(path).read_text(encoding="utf-8")
     assert expected in text, f"{path} missing default {expected}"
 
 runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding="utf-8")
-for expected in ["Qwen/Qwen3.5-2B", "Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B"]:
+for expected in ["Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "Qwen/Qwen3-8B"]:
     assert expected in runner, f"benchmark runner missing model default {expected}"
 
 phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-8")
@@ -53,8 +53,8 @@ with open("verl/trainer/config/sdpo_math_a100.yaml", encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
 
 assert cfg["actor_rollout_ref"]["actor"]["policy_loss"]["loss_mode"] == "sdpo"
-assert cfg["actor_rollout_ref"]["model"]["path"] == "Qwen/Qwen3.5-9B"
-assert cfg["critic"]["model"]["path"] == "Qwen/Qwen3.5-9B"
+assert cfg["actor_rollout_ref"]["model"]["path"] == "Qwen/Qwen3-8B"
+assert cfg["critic"]["model"]["path"] == "Qwen/Qwen3-8B"
 assert cfg["data"]["train_batch_size"] == 24
 assert cfg["data"]["val_batch_size"] == 128
 assert cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"] == 32

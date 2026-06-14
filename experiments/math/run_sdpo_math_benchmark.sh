@@ -25,7 +25,7 @@ ALLOW_MODEL_OVERRIDE="${ALLOW_MODEL_OVERRIDE:-0}"
 case "${PHASE}" in
   pilot)
     RUN_PROFILE="${RUN_PROFILE:-fast}"
-    MODEL_PATH="${MODEL_PATH:-${PILOT_MODEL_PATH:-Qwen/Qwen3.5-2B}}"
+    MODEL_PATH="${MODEL_PATH:-${PILOT_MODEL_PATH:-Qwen/Qwen3-1.7B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-10}"
     TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"
     VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
@@ -36,7 +36,7 @@ case "${PHASE}" in
     ;;
   scale_decision|ablation)
     RUN_PROFILE="${RUN_PROFILE:-balanced}"
-    MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3.5-4B}}"
+    MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-4B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-50}"
     case "${RUN_PROFILE}" in
       fast)
@@ -63,7 +63,7 @@ case "${PHASE}" in
     ;;
   thesis)
     RUN_PROFILE="${RUN_PROFILE:-quality}"
-    MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}}"
+    MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-300}"
     TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:--1}"
     VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
@@ -72,19 +72,19 @@ case "${PHASE}" in
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-True}"
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Thesis}"
     ;;
-  scale_9b)
-    RUN_PROFILE="${RUN_PROFILE:-high_mem_9b}"
-    MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}}"
+  scale_8b)
+    RUN_PROFILE="${RUN_PROFILE:-high_mem_8b}"
+    MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-300}"
     TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:--1}"
     VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
     EVAL_FREQ="${EVAL_FREQ:-100}"
     SAVE_FREQ="${SAVE_FREQ:-100}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-True}"
-    GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-9B}"
+    GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-8B}"
     ;;
   *)
-    echo "Unknown PHASE=${PHASE}. Use pilot, scale_decision, thesis, or scale_9b." >&2
+    echo "Unknown PHASE=${PHASE}. Use pilot, scale_decision, thesis, or scale_8b." >&2
     exit 1
     ;;
 esac
@@ -96,12 +96,12 @@ if [[ "${CONFIG_NAME}" != "sdpo_math_a100" && "${ALLOW_CONFIG_OVERRIDE}" != "1" 
 fi
 
 case "${MODEL_PATH}" in
-  Qwen/Qwen3.5-2B|Qwen/Qwen3.5-4B|Qwen/Qwen3.5-9B)
+  Qwen/Qwen3-1.7B|Qwen/Qwen3-4B|Qwen/Qwen3-8B)
     ;;
   *)
     if [[ "${ALLOW_MODEL_OVERRIDE}" != "1" ]]; then
-      echo "Refusing MODEL_PATH=${MODEL_PATH}. SDPO-Math thesis phases are locked to Qwen3.5 2B/4B/9B." >&2
-      echo "Set ALLOW_MODEL_OVERRIDE=1 only for a deliberate non-thesis experiment." >&2
+      echo "Refusing MODEL_PATH=${MODEL_PATH}. SDPO-Math thesis phases are locked to Qwen3 1.7B/4B/8B." >&2
+      echo "Set ALLOW_MODEL_OVERRIDE=1 only for a deliberate non-thesis compatibility experiment." >&2
       exit 1
     fi
     ;;

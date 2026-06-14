@@ -43,7 +43,7 @@ sdpo_math_configure_profile() {
       BATCHED_TOKENS=49152
       GPU_UTIL=0.88
       ;;
-    high_mem_9b|a100_9b)
+    high_mem_8b|a100_8b)
       TRAIN_BS=32
       ROLLOUT_N=4
       AGENT_WORKERS=32
@@ -56,7 +56,7 @@ sdpo_math_configure_profile() {
       GPU_UTIL=0.90
       ;;
     *)
-      echo "Unknown RUN_PROFILE=${profile}. Use fast, balanced, quality, or high_mem_9b." >&2
+      echo "Unknown RUN_PROFILE=${profile}. Use fast, balanced, quality, or high_mem_8b." >&2
       return 1
       ;;
   esac

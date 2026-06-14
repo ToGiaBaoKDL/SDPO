@@ -10,8 +10,8 @@ from pathlib import Path
 EXPECTED_SNIPPETS = {
     "base_model": [
         "--config-name sdpo_math_a100",
-        "actor_rollout_ref.model.path=Qwen/Qwen3.5-2B",
-        "critic.model.path=Qwen/Qwen3.5-2B",
+        "actor_rollout_ref.model.path=Qwen/Qwen3-1.7B",
+        "critic.model.path=Qwen/Qwen3-1.7B",
         "trainer.val_before_train=True",
         "trainer.val_only=True",
         "trainer.validation_data_dir=",
@@ -24,8 +24,8 @@ EXPECTED_SNIPPETS = {
     ],
     "base_rl": [
         "--config-name sdpo_math_a100",
-        "actor_rollout_ref.model.path=Qwen/Qwen3.5-2B",
-        "critic.model.path=Qwen/Qwen3.5-2B",
+        "actor_rollout_ref.model.path=Qwen/Qwen3-1.7B",
+        "critic.model.path=Qwen/Qwen3-1.7B",
         "trainer.total_training_steps=1",
         "trainer.validation_data_dir=",
         "data.train_batch_size=32",
@@ -36,8 +36,8 @@ EXPECTED_SNIPPETS = {
     ],
     "sdpo_vanilla": [
         "--config-name sdpo_math_a100",
-        "actor_rollout_ref.model.path=Qwen/Qwen3.5-2B",
-        "critic.model.path=Qwen/Qwen3.5-2B",
+        "actor_rollout_ref.model.path=Qwen/Qwen3-1.7B",
+        "critic.model.path=Qwen/Qwen3-1.7B",
         "trainer.total_training_steps=1",
         "trainer.validation_data_dir=",
         "data.train_batch_size=32",
@@ -48,8 +48,8 @@ EXPECTED_SNIPPETS = {
     ],
     "sdpo_reliability": [
         "--config-name sdpo_math_a100",
-        "actor_rollout_ref.model.path=Qwen/Qwen3.5-2B",
-        "critic.model.path=Qwen/Qwen3.5-2B",
+        "actor_rollout_ref.model.path=Qwen/Qwen3-1.7B",
+        "critic.model.path=Qwen/Qwen3-1.7B",
         "trainer.total_training_steps=1",
         "trainer.validation_data_dir=",
         "data.train_batch_size=32",

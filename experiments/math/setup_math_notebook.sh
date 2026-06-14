@@ -11,13 +11,12 @@ INSTALL_MATH_VERIFY="${INSTALL_MATH_VERIFY:-1}"
 PREPARE_DATA="${PREPARE_DATA:-1}"
 RUN_CPU_CHECK="${RUN_CPU_CHECK:-1}"
 VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-1}"
-INSTALL_QWEN35_TRANSFORMERS="${INSTALL_QWEN35_TRANSFORMERS:-1}"
-QWEN35_TRANSFORMERS_SPEC="${QWEN35_TRANSFORMERS_SPEC:-git+https://github.com/huggingface/transformers.git}"
-RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE="${RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE:-0}"
-RUN_QWEN35_VLLM_LOAD_SMOKE="${RUN_QWEN35_VLLM_LOAD_SMOKE:-0}"
-QWEN35_VLLM_SMOKE_TP="${QWEN35_VLLM_SMOKE_TP:-1}"
-QWEN35_VLLM_SMOKE_MAX_MODEL_LEN="${QWEN35_VLLM_SMOKE_MAX_MODEL_LEN:-1024}"
-QWEN35_VLLM_SMOKE_GPU_UTIL="${QWEN35_VLLM_SMOKE_GPU_UTIL:-0.25}"
+STABLE_TRANSFORMERS_SPEC="${STABLE_TRANSFORMERS_SPEC:-transformers==4.57.1}"
+RUN_TRANSFORMERS_LOAD_SMOKE="${RUN_TRANSFORMERS_LOAD_SMOKE:-0}"
+RUN_VLLM_LOAD_SMOKE="${RUN_VLLM_LOAD_SMOKE:-0}"
+VLLM_SMOKE_TP="${VLLM_SMOKE_TP:-1}"
+VLLM_SMOKE_MAX_MODEL_LEN="${VLLM_SMOKE_MAX_MODEL_LEN:-1024}"
+VLLM_SMOKE_GPU_UTIL="${VLLM_SMOKE_GPU_UTIL:-0.25}"
 
 if [[ "${SDPO_PYTHON_VERSION}" != 3.12* && "${ALLOW_UNTESTED_PYTHON}" != "1" ]]; then
   cat >&2 <<EOF
@@ -37,9 +36,9 @@ echo "sdpo_python_version=${SDPO_PYTHON_VERSION}"
 echo "install_math_verify=${INSTALL_MATH_VERIFY}"
 echo "prepare_data=${PREPARE_DATA}"
 echo "verify_hf_models=${VERIFY_HF_MODELS}"
-echo "install_qwen35_transformers=${INSTALL_QWEN35_TRANSFORMERS}"
-echo "run_qwen35_transformers_load_smoke=${RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE}"
-echo "run_qwen35_vllm_load_smoke=${RUN_QWEN35_VLLM_LOAD_SMOKE}"
+echo "stable_transformers_spec=${STABLE_TRANSFORMERS_SPEC}"
+echo "run_transformers_load_smoke=${RUN_TRANSFORMERS_LOAD_SMOKE}"
+echo "run_vllm_load_smoke=${RUN_VLLM_LOAD_SMOKE}"
 
 if [[ -x .venv/bin/python ]]; then
   EXISTING_PYTHON_VERSION="$(
@@ -72,27 +71,8 @@ uv pip install -q -U pip
 uv pip install -q pyyaml pyarrow pandas datasets
 uv pip install -q -e ".[vllm]"
 
-if [[ "${INSTALL_QWEN35_TRANSFORMERS}" == "1" ]]; then
-  if python - <<'PY'
-import os
-
-from transformers import AutoConfig
-
-model_id = os.environ.get("SMOKE_MODEL_PATH", "Qwen/Qwen3.5-2B")
-try:
-    cfg = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
-except Exception as exc:
-    print(f"installed_transformers_qwen35_config_failed: {type(exc).__name__}: {exc}")
-    raise SystemExit(1)
-print("installed_transformers_qwen35_config_ok:", {"id": model_id, "model_type": getattr(cfg, "model_type", None)})
-PY
-  then
-    echo "Skipping Transformers source install; installed stack already reads Qwen3.5 config."
-  else
-    echo "Installing Qwen3.5-compatible Transformers from ${QWEN35_TRANSFORMERS_SPEC}"
-    uv pip install -q -U "${QWEN35_TRANSFORMERS_SPEC}"
-  fi
-fi
+echo "Installing stable Transformers ${STABLE_TRANSFORMERS_SPEC}"
+uv pip install -q -U "${STABLE_TRANSFORMERS_SPEC}"
 
 if [[ "${INSTALL_MATH_VERIFY}" == "1" ]]; then
   uv pip install -q "math-verify[antlr4_9_3]==0.8.0"
@@ -108,20 +88,25 @@ if missing:
     raise SystemExit(f"missing dependencies: {missing}")
 print("deps_ok:", ", ".join(required))
 print("transformers_version:", transformers.__version__)
+try:
+    import importlib.metadata as metadata
+    print("vllm_version:", metadata.version("vllm"))
+except Exception as exc:
+    print("vllm_version_unavailable:", type(exc).__name__)
 print("math_verify_available:", int(importlib.util.find_spec("math_verify") is not None))
 PY
 
 if [[ "${VERIFY_HF_MODELS}" == "1" ]]; then
   VERIFY_ARGS=(--models "${SMOKE_MODEL_PATH}" "${SCALE_MODEL_PATH}" "${THESIS_MODEL_PATH}")
-  if [[ "${RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE}" == "1" ]]; then
+  if [[ "${RUN_TRANSFORMERS_LOAD_SMOKE}" == "1" ]]; then
     VERIFY_ARGS+=(--load-smoke-model "${PILOT_MODEL_PATH}")
   fi
-  if [[ "${RUN_QWEN35_VLLM_LOAD_SMOKE}" == "1" ]]; then
+  if [[ "${RUN_VLLM_LOAD_SMOKE}" == "1" ]]; then
     VERIFY_ARGS+=(
       --vllm-smoke-model "${PILOT_MODEL_PATH}"
-      --vllm-tensor-parallel-size "${QWEN35_VLLM_SMOKE_TP}"
-      --vllm-max-model-len "${QWEN35_VLLM_SMOKE_MAX_MODEL_LEN}"
-      --vllm-gpu-memory-utilization "${QWEN35_VLLM_SMOKE_GPU_UTIL}"
+      --vllm-tensor-parallel-size "${VLLM_SMOKE_TP}"
+      --vllm-max-model-len "${VLLM_SMOKE_MAX_MODEL_LEN}"
+      --vllm-gpu-memory-utilization "${VLLM_SMOKE_GPU_UTIL}"
     )
   fi
   python experiments/math/verify_hf_models.py "${VERIFY_ARGS[@]}"

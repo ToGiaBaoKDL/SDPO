@@ -43,8 +43,8 @@ def main() -> None:
     assert "data/dapo_math_en/val.parquet" in checks["val_files"][0]
     assert checks["actor_attn"] == "sdpa"
     assert checks["critic_attn"] == "sdpa"
-    assert checks["actor_model"] == "Qwen/Qwen3.5-9B"
-    assert checks["critic_model"] == "Qwen/Qwen3.5-9B"
+    assert checks["actor_model"] == "Qwen/Qwen3-8B"
+    assert checks["critic_model"] == "Qwen/Qwen3-8B"
     assert checks["train_batch_size"] == 24
     assert checks["val_batch_size"] == 128
     assert checks["agent_workers"] == 32
@@ -65,7 +65,7 @@ def main() -> None:
         "fast)",
         "balanced)",
         "quality)",
-        "high_mem_9b|a100_9b)",
+        "high_mem_8b|a100_8b)",
         "TRAIN_BS=32",
         "AGENT_WORKERS=32",
         "BATCHED_TOKENS=65536",
@@ -90,7 +90,7 @@ def main() -> None:
     for snippet in [
         "scale_decision|ablation)",
         "thesis)",
-        "scale_9b)",
+        "scale_8b)",
         "ALLOW_CONFIG_OVERRIDE",
         "ALLOW_MODEL_OVERRIDE",
         "Refusing CONFIG_NAME",

@@ -37,7 +37,7 @@ custom_reward_function:
 
 actor_rollout_ref:
   model:
-    path: Qwen/Qwen3.5-9B
+    path: Qwen/Qwen3-8B
     trust_remote_code: True
     override_config:
       attn_implementation: sdpa
@@ -112,7 +112,7 @@ actor_rollout_ref:
 
 critic:
   model:
-    path: Qwen/Qwen3.5-9B
+    path: Qwen/Qwen3-8B
     override_config:
       attn_implementation: sdpa
 

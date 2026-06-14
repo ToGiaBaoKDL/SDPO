@@ -11,7 +11,7 @@ Validation in these phases uses `data/dapo_math_en/val.parquet`, the held-out DA
 
 ## Required Setup
 
-Use a fresh clone at `/root/SDPO` and pull the latest code before running phases. The setup script creates a Python 3.12 uv venv, installs the project with vLLM, installs `math-verify`, verifies the Hugging Face model ids and Transformers architecture support, prepares the English DAPO-Math split if missing, and runs CPU/data checks. It does not load model weights by default; Phase 0 performs the real Transformers/vLLM load smoke.
+Use a fresh clone at `/root/SDPO` and pull the latest code before running phases. The setup script creates a Python 3.12 uv venv, installs the project with vLLM, installs `math-verify`, verifies the Hugging Face model ids and Transformers architecture support, prepares the English DAPO-Math split if missing, and runs CPU/data checks. It does not load model weights by default unless `RUN_VLLM_LOAD_SMOKE=1`; Phase 0 performs the real Transformers/vLLM load smoke.
 
 Run once per notebook VM:
 
@@ -26,9 +26,9 @@ unset PYTHON_VERSION
 export SDPO_PYTHON_VERSION=3.12
 bash experiments/math/setup_math_notebook.sh
 
-Useful setup flags: `PREPARE_DATA=0` skips data creation, `RUN_CPU_CHECK=0` skips CPU checks, `VERIFY_HF_MODELS=0` skips Hugging Face model checks, `RUN_QWEN35_TRANSFORMERS_LOAD_SMOKE=1` adds a setup-time Transformers load smoke, `RUN_QWEN35_VLLM_LOAD_SMOKE=1` adds a setup-time vLLM load smoke, and `INSTALL_MATH_VERIFY=0` skips `math-verify` installation. For thesis runs, keep `INSTALL_MATH_VERIFY=1`.
+Useful setup flags: `PREPARE_DATA=0` skips data creation, `RUN_CPU_CHECK=0` skips CPU checks, `VERIFY_HF_MODELS=0` skips Hugging Face model checks, `RUN_TRANSFORMERS_LOAD_SMOKE=1` adds a setup-time Transformers load smoke, `RUN_VLLM_LOAD_SMOKE=1` adds a setup-time vLLM load smoke, and `INSTALL_MATH_VERIFY=0` skips `math-verify` installation. For thesis runs, keep `INSTALL_MATH_VERIFY=1`.
 
-Qwen3.5 currently requires a Transformers build that recognizes `model_type=qwen3_5`. The setup script checks the installed stack after `verl[vllm]`; if it cannot read the Qwen3.5 config, it installs `git+https://github.com/huggingface/transformers.git`. Override with `INSTALL_QWEN35_TRANSFORMERS=0` only if your installed Transformers already passes `experiments/math/verify_hf_models.py`. Phase 0 repeats the architecture check and runs real Transformers and vLLM load smokes after every pull/update.
+The runbook uses only the Qwen3 text checkpoints listed below.
 
 The setup script intentionally uses `SDPO_PYTHON_VERSION`, not the generic notebook variable `PYTHON_VERSION`. Use Python 3.12 unless you intentionally set `ALLOW_UNTESTED_PYTHON=1`.
 
@@ -40,11 +40,11 @@ That helper activates `.venv` if it exists, sets `PROJECT_ROOT`, `PYTHONPATH`, `
 
 Model ladder:
 
-- Phase 1 pilot: `Qwen/Qwen3.5-2B`.
-- Phase 2 scale decision: `Qwen/Qwen3.5-4B`.
-- Phase 4 thesis: `Qwen/Qwen3.5-9B`.
+- Phase 1 pilot: `Qwen/Qwen3-1.7B`.
+- Phase 2 scale decision: `Qwen/Qwen3-4B`.
+- Phase 4 thesis: `Qwen/Qwen3-8B`.
 
-The Qwen3.5 model ids targeted by this runbook are `Qwen/Qwen3.5-2B`, `Qwen/Qwen3.5-4B`, and `Qwen/Qwen3.5-9B`. They require a Transformers/vLLM stack that recognizes `model_type=qwen3_5`; setup and Phase 0 check this before training.
+Setup and Phase 0 check model compatibility before training.
 
 ## Benchmark Variants
 
@@ -62,10 +62,10 @@ Use `sdpo_vanilla` as the main SDPO baseline in thesis tables. `sdpo_reliability
 
 ## Profiles
 
-- `fast`: pilot profile for Qwen3.5-2B on 2x A100. `train_batch_size=32`, `rollout.n=4`, `agent_workers=32`, response length `1024`.
-- `balanced`: scale-decision profile for Qwen3.5-4B on 2x A100. `train_batch_size=32`, `rollout.n=4`, `agent_workers=32`, response length `1536`.
-- `quality`: default thesis profile for Qwen3.5-9B on 2x A100. `train_batch_size=24`, `rollout.n=4`, `agent_workers=32`, response length `2048`.
-- `high_mem_9b`: optional maximum-throughput Qwen3.5-9B profile. It raises train batch size to `32`, keeps `agent_workers=32`, and raises vLLM batched tokens to `65536`.
+- `fast`: pilot profile for Qwen3-1.7B on 2x A100. `train_batch_size=32`, `rollout.n=4`, `agent_workers=32`, response length `1024`.
+- `balanced`: scale-decision profile for Qwen3-4B on 2x A100. `train_batch_size=32`, `rollout.n=4`, `agent_workers=32`, response length `1536`.
+- `quality`: default thesis profile for Qwen3-8B on 2x A100. `train_batch_size=24`, `rollout.n=4`, `agent_workers=32`, response length `2048`.
+- `high_mem_8b`: optional maximum-throughput Qwen3-8B profile. It raises train batch size to `32`, keeps `agent_workers=32`, and raises vLLM batched tokens to `65536`.
 
 Recommended order:
 
@@ -73,8 +73,8 @@ Recommended order:
 2. Phase 1: pilot, confirms all variants run.
 3. Phase 2: scale-decision benchmark.
 4. Phase 3: inspect logs.
-5. Phase 4: thesis 9B run.
-6. Phase 5: optional max-throughput 9B run only after Phase 4 is stable.
+5. Phase 4: thesis 8B run.
+6. Phase 5: optional max-throughput 8B run only after Phase 4 is stable.
 7. Phase 6: report-readiness check.
 
 Use `ULTRA_QUIET=1` for long runs. It hides Ray worker stdout and writes metrics JSONL under the run log directory. Keep `ULTRA_QUIET=1` for Phase 4 so `summary.csv` and report-readiness checks can be generated from file logs.
@@ -176,7 +176,7 @@ python experiments/math/summarize_phase_results.py --log-dir "$LOG_DIR" || true
 
 ## Phase 4. Main Thesis Runs
 
-Purpose: final Qwen3.5-9B thesis comparison.
+Purpose: final Qwen3-8B thesis comparison.
 
 Default: `PHASE=thesis`, `RUN_PROFILE=quality`, `TRAIN_STEPS=300`, validation every `100` steps.
 This runs the frozen `base_model` evaluation plus the 3 train variants.
@@ -198,19 +198,19 @@ export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
 
-## Phase 5. Optional Max-Throughput 9B Run
+## Phase 5. Optional Max-Throughput 8B Run
 
-Use only after Phase 4 is stable. This keeps the same thesis model and variants, but uses the larger `high_mem_9b` profile.
+Use only after Phase 4 is stable. This keeps the same thesis model and variants, but uses the larger `high_mem_8b` profile.
 
 %%bash
 set -euo pipefail
 
-echo "== Phase 5: optional max-throughput 9B run =="
+echo "== Phase 5: optional max-throughput 8B run =="
 cd /root/SDPO
 source experiments/math/math_env.sh
 
-export PHASE=scale_9b
-export RUN_PROFILE=high_mem_9b
+export PHASE=scale_8b
+export RUN_PROFILE=high_mem_8b
 export TRAIN_STEPS="${TRAIN_STEPS:-300}"
 export EVAL_FREQ="${EVAL_FREQ:-100}"
 export SAVE_FREQ="${SAVE_FREQ:-100}"

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -69,7 +70,7 @@ def verify_model_config(model_id: str, *, allow_automodel_fallback: bool) -> tup
             f"transformers_model_config_failed: {model_id}\n"
             f"{type(exc).__name__}: {exc}\n"
             "This model exists on Hugging Face, but the installed Transformers stack cannot load "
-            "its architecture. Install a Transformers build that supports qwen3_5 before running this phase."
+            "its architecture. Install a Transformers build that supports this model before running this phase."
         ) from exc
     print("transformers_config_ok:", {"id": model_id, "model_type": getattr(config, "model_type", None)})
     auto_model_cls = get_hf_auto_model_class(config)
@@ -80,7 +81,7 @@ def verify_model_config(model_id: str, *, allow_automodel_fallback: bool) -> tup
             f"selected_auto_class={auto_class}, architectures={getattr(config, 'architectures', None)}\n"
             "The installed Transformers stack can read the config, but it does not expose a language-generation "
             "AutoModel class that the FSDP worker can use safely. Upgrade Transformers/vLLM or choose another "
-            "Qwen3.x checkpoint."
+            "text-generation checkpoint."
         )
     print("verl_auto_class_ok:", {"id": model_id, "auto_class": auto_class})
     return config_source, auto_model_cls
@@ -146,6 +147,12 @@ def load_vllm_smoke(
         from vllm import LLM, SamplingParams
     except Exception as exc:
         raise SystemExit(f"vllm_import_failed: {type(exc).__name__}: {exc}") from exc
+
+    try:
+        vllm_version = metadata.version("vllm")
+    except metadata.PackageNotFoundError:
+        vllm_version = "unknown"
+    print("vllm_version:", vllm_version)
 
     try:
         llm = LLM(

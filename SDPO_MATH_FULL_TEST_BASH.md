@@ -4,16 +4,16 @@ Use this in a notebook cloned at `/root/SDPO` with 2x A100 GPUs.
 
 Run model order:
 
-1. Smoke/debug model: `Qwen/Qwen3.5-2B`
-2. Scale-decision model: `Qwen/Qwen3.5-4B`
-3. Thesis model: `Qwen/Qwen3.5-9B`
+1. Smoke/debug model: `Qwen/Qwen3-1.7B`
+2. Scale-decision model: `Qwen/Qwen3-4B`
+3. Thesis model: `Qwen/Qwen3-8B`
 
-The math config and thesis phase default to `Qwen/Qwen3.5-9B`.
-Use the 2B model for smoke tests, the 4B model for scale-decision runs,
-and the 9B model for the main thesis path.
+The math config and thesis phase default to `Qwen/Qwen3-8B`.
+Use the 1.7B model for smoke tests, the 4B model for scale-decision runs,
+and the 8B model for the main thesis path.
 
-Qwen3.5 requires an installed Transformers/vLLM stack that recognizes
-`model_type=qwen3_5`. The runtime sanity cell uses
+Qwen3 requires an installed Transformers/vLLM stack that supports the text-generation model.
+The runtime sanity cell uses
 `experiments/math/verify_hf_models.py` to check both Hugging Face access and
 Transformers `AutoConfig` compatibility, a real Transformers load smoke, and a
 small vLLM load smoke before any Ray/FSDP training starts. If that check fails,
@@ -210,9 +210,9 @@ cd /root/SDPO
 source .venv/bin/activate
 source experiments/math/common_quiet_env.sh
 
-export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3.5-2B}"
-export SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3.5-4B}"
-export THESIS_MODEL_PATH="${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}"
+export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3-1.7B}"
+export SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3-4B}"
+export THESIS_MODEL_PATH="${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}"
 export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-$SCALE_MODEL_PATH}"
 
 nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv
@@ -371,9 +371,9 @@ export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export TOKENIZERS_PARALLELISM=false
 export CUDA_VISIBLE_DEVICES=0,1
 
-export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3.5-2B}"
-export SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3.5-4B}"
-export THESIS_MODEL_PATH="${THESIS_MODEL_PATH:-Qwen/Qwen3.5-9B}"
+export SMOKE_MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3-1.7B}"
+export SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3-4B}"
+export THESIS_MODEL_PATH="${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}"
 export TARGET_MODEL_PATH="${TARGET_MODEL_PATH:-$SCALE_MODEL_PATH}"
 
 echo "smoke_model=$SMOKE_MODEL_PATH"
@@ -397,7 +397,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3.5-2B}"
+export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3-1.7B}"
 
 echo "model=$MODEL_PATH"
 ray stop --force >/dev/null 2>&1 || true
@@ -458,7 +458,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3-4B}"
 
 echo "model=$MODEL_PATH"
 ray stop --force >/dev/null 2>&1 || true
@@ -515,7 +515,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3.5-2B}"
+export MODEL_PATH="${SMOKE_MODEL_PATH:-Qwen/Qwen3-1.7B}"
 
 echo "model=$MODEL_PATH"
 
@@ -548,7 +548,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3-4B}"
 
 echo "model=$MODEL_PATH"
 
@@ -581,7 +581,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3-4B}"
 export TRAIN_MAX_SAMPLES=128
 export VAL_MAX_SAMPLES=64
 export TOTAL_TRAINING_STEPS=5
@@ -635,7 +635,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3-4B}"
 export TRAIN_MAX_SAMPLES=-1
 export VAL_MAX_SAMPLES=-1
 export TOTAL_TRAINING_STEPS=null
@@ -734,7 +734,7 @@ export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export WANDB_MODE=offline
 export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 export CUDA_VISIBLE_DEVICES=0,1
-export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3.5-4B}"
+export MODEL_PATH="${TARGET_MODEL_PATH:-Qwen/Qwen3-4B}"
 
 ray stop --force >/dev/null 2>&1 || true
 bash experiments/math/run_sdpo_math_smoke.sh reliability \
