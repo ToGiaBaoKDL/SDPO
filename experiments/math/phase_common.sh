@@ -120,7 +120,7 @@ sdpo_math_build_common_overrides() {
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu="${MODEL_LEN}"
     actor_rollout_ref.rollout.val_kwargs.n=1
     actor_rollout_ref.rollout.val_kwargs.do_sample=False
-    actor_rollout_ref.rollout.val_kwargs.temperature=0.0
+    actor_rollout_ref.rollout.val_kwargs.temperature=0.01
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu="${MODEL_LEN}"
     actor_rollout_ref.actor.self_distillation.max_reprompt_len="${REPROMPT_LEN}"
     critic.data_loader_seed="${SEED:-42}"

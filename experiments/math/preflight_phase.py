@@ -71,6 +71,7 @@ def main() -> None:
         "BATCHED_TOKENS=65536",
         "effective_rollouts",
         "actor_rollout_ref.rollout.val_kwargs.n=1",
+        "actor_rollout_ref.rollout.val_kwargs.temperature=0.01",
     ]:
         require_snippet(phase_common_path, phase_common, snippet)
 
