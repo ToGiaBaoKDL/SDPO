@@ -62,7 +62,7 @@ PROFILE_EXPECTATIONS = {
         "train_batch_size": 64,
         "agent_workers": 128,
         "base_model_train_max_samples": 128,
-        "gpu_util": "0.90",
+        "gpu_util": "0.86",
         "enforce_eager": "False",
     },
     ("h100", "fast"): {

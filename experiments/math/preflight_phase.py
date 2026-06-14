@@ -80,7 +80,7 @@ def main() -> None:
         "AGENT_WORKERS=128",
         "BATCHED_TOKENS=98304",
         "BATCHED_TOKENS=131072",
-        'GPU_UTIL="${GPU_UTIL:-0.90}"',
+        'GPU_UTIL="${GPU_UTIL:-0.86}"',
         "ENFORCE_EAGER",
         "effective_rollouts",
         'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',

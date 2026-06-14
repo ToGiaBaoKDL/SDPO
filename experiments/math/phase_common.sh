@@ -26,7 +26,7 @@ sdpo_math_configure_profile() {
       ACTOR_LEN=6144
       REPROMPT_LEN=3072
       BATCHED_TOKENS=98304
-      GPU_UTIL="${GPU_UTIL:-0.90}"
+      GPU_UTIL="${GPU_UTIL:-0.86}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     a100:balanced)
@@ -38,7 +38,7 @@ sdpo_math_configure_profile() {
       ACTOR_LEN=8192
       REPROMPT_LEN=4096
       BATCHED_TOKENS=131072
-      GPU_UTIL="${GPU_UTIL:-0.90}"
+      GPU_UTIL="${GPU_UTIL:-0.86}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     a100:quality)
@@ -50,7 +50,7 @@ sdpo_math_configure_profile() {
       ACTOR_LEN=10240
       REPROMPT_LEN=5120
       BATCHED_TOKENS=131072
-      GPU_UTIL="${GPU_UTIL:-0.90}"
+      GPU_UTIL="${GPU_UTIL:-0.86}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     h100:fast)
