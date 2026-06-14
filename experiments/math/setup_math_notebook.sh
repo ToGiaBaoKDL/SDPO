@@ -14,10 +14,6 @@ VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-1}"
 STABLE_TRANSFORMERS_SPEC="${STABLE_TRANSFORMERS_SPEC:-transformers==4.57.1}"
 NUMPY_SPEC="${NUMPY_SPEC:-numpy==2.1.0}"
 RUN_TRANSFORMERS_LOAD_SMOKE="${RUN_TRANSFORMERS_LOAD_SMOKE:-0}"
-RUN_VLLM_LOAD_SMOKE="${RUN_VLLM_LOAD_SMOKE:-0}"
-VLLM_SMOKE_TP="${VLLM_SMOKE_TP:-1}"
-VLLM_SMOKE_MAX_MODEL_LEN="${VLLM_SMOKE_MAX_MODEL_LEN:-1024}"
-VLLM_SMOKE_GPU_UTIL="${VLLM_SMOKE_GPU_UTIL:-0.70}"
 
 if [[ "${SDPO_PYTHON_VERSION}" != 3.12* && "${ALLOW_UNTESTED_PYTHON}" != "1" ]]; then
   cat >&2 <<EOF
@@ -41,7 +37,6 @@ echo "stable_transformers_spec=${STABLE_TRANSFORMERS_SPEC}"
 echo "numpy_spec=${NUMPY_SPEC}"
 echo "vllm_worker_multiproc_method=${VLLM_WORKER_MULTIPROC_METHOD}"
 echo "run_transformers_load_smoke=${RUN_TRANSFORMERS_LOAD_SMOKE}"
-echo "run_vllm_load_smoke=${RUN_VLLM_LOAD_SMOKE}"
 
 if [[ -x .venv/bin/python ]]; then
   EXISTING_PYTHON_VERSION="$(
@@ -112,16 +107,6 @@ if [[ "${VERIFY_HF_MODELS}" == "1" ]]; then
   python experiments/math/verify_hf_models.py --models "${SMOKE_MODEL_PATH}" "${SCALE_MODEL_PATH}" "${THESIS_MODEL_PATH}"
   if [[ "${RUN_TRANSFORMERS_LOAD_SMOKE}" == "1" ]]; then
     python experiments/math/verify_hf_models.py --models "${PILOT_MODEL_PATH}" --load-smoke-model "${PILOT_MODEL_PATH}"
-  fi
-  if [[ "${RUN_VLLM_LOAD_SMOKE}" == "1" ]]; then
-    ray stop --force >/dev/null 2>&1 || true
-    python experiments/math/verify_hf_models.py \
-      --models "${PILOT_MODEL_PATH}" \
-      --vllm-smoke-model "${PILOT_MODEL_PATH}" \
-      --vllm-tensor-parallel-size "${VLLM_SMOKE_TP}" \
-      --vllm-max-model-len "${VLLM_SMOKE_MAX_MODEL_LEN}" \
-      --vllm-gpu-memory-utilization "${VLLM_SMOKE_GPU_UTIL}"
-    ray stop --force >/dev/null 2>&1 || true
   fi
 fi
 

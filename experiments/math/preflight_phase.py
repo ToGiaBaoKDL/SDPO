@@ -18,6 +18,11 @@ def require_snippet(path: str, text: str, snippet: str) -> None:
         raise AssertionError(f"{path} is stale or inconsistent; missing: {snippet}")
 
 
+def forbid_snippet(path: str, text: str, snippet: str) -> None:
+    if snippet in text:
+        raise AssertionError(f"{path} is stale or inconsistent; remove: {snippet}")
+
+
 def main() -> None:
     config_path = Path("verl/trainer/config/sdpo_math_a100.yaml")
     with config_path.open(encoding="utf-8") as f:
@@ -77,6 +82,31 @@ def main() -> None:
         "actor_rollout_ref.rollout.val_kwargs.temperature=0.01",
     ]:
         require_snippet(phase_common_path, phase_common, snippet)
+
+    live_preflight_path = "experiments/math/run_sdpo_math_live_preflight.sh"
+    live_preflight = Path(live_preflight_path).read_text(encoding="utf-8")
+    for snippet in [
+        'VARIANTS="${VARIANTS:-base_model}"',
+        'VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-8}"',
+        'bash "${SCRIPT_DIR}/run_sdpo_math_benchmark.sh"',
+    ]:
+        require_snippet(live_preflight_path, live_preflight, snippet)
+
+    setup_path = "experiments/math/setup_math_notebook.sh"
+    setup = Path(setup_path).read_text(encoding="utf-8")
+    for snippet in [
+        "SDPO_PYTHON_VERSION",
+        "transformers==4.57.1",
+        "numpy==2.1.0",
+        "RUN_TRANSFORMERS_LOAD_SMOKE",
+    ]:
+        require_snippet(setup_path, setup, snippet)
+    for snippet in [
+        "RUN_VLLM_LOAD_SMOKE",
+        "RUN_STANDALONE_VLLM_LOAD_SMOKE",
+        "--vllm-smoke-model",
+    ]:
+        forbid_snippet(setup_path, setup, snippet)
 
     runner_path = "experiments/math/run_sdpo_math_benchmark.sh"
     runner = Path(runner_path).read_text(encoding="utf-8")

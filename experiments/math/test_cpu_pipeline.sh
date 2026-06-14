@@ -12,6 +12,7 @@ bash -n \
   experiments/math/math_env.sh \
   experiments/math/setup_math_notebook.sh \
   experiments/math/run_sdpo_math_benchmark.sh \
+  experiments/math/run_sdpo_math_live_preflight.sh \
   experiments/math/run_sdpo_math_vanilla.sh \
   experiments/math/run_sdpo_math_reliability.sh \
   experiments/math/run_sdpo_math_smoke.sh
@@ -46,6 +47,10 @@ assert "\n      ray_kwargs.ray_init.log_to_driver=False" not in phase_common
 
 quiet_env = Path("experiments/math/common_quiet_env.sh").read_text(encoding="utf-8")
 assert 'VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"' in quiet_env
+
+setup = Path("experiments/math/setup_math_notebook.sh").read_text(encoding="utf-8")
+for snippet in ["RUN_VLLM_LOAD_SMOKE", "RUN_STANDALONE_VLLM_LOAD_SMOKE", "--vllm-smoke-model"]:
+    assert snippet not in setup, f"setup script should not run standalone vLLM smoke: {snippet}"
 PY
 
 echo "[2/5] Checking YAML config"
