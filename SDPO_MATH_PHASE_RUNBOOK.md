@@ -18,32 +18,35 @@ Models:
 | Phase | Model | Profile |
 |---|---|---|
 | Pilot | `Qwen/Qwen3-1.7B` | `fast` |
-| Scale decision | `Qwen/Qwen3-4B` | `balanced` |
-| Thesis | `Qwen/Qwen3-8B` | `quality` |
+| Scale decision | `Qwen/Qwen3-4B` | `fast`, compute-bounded |
+| Thesis | `Qwen/Qwen3-8B` | `balanced`, compute-bounded |
 
-Variants:
+Default phase variants:
 
 | Variant | Meaning |
 |---|---|
-| `base_model` | frozen validation baseline, no training, no LoRA |
 | `base_rl` | GRPO/RL baseline with vanilla policy loss |
 | `sdpo_vanilla` | feedback-enabled SDPO baseline |
-| `sdpo_reliability` | SDPO+ with reliability-weighted SDPO targets |
+| `sdpo_reliability_gate` | SDPO improvement: reliability-weighted targets plus sparse teacher forwards |
 
 Profile settings are selected by `HARDWARE_PROFILE`:
 
 | Hardware | Profile | Train batch | Rollout n | Workers | Response | Model len | vLLM util |
 |---|---|---:|---:|---:|---:|---:|---:|
-| A100-80GB | `fast` | 64 | 4 | 128 | 1536 | 5120 | 0.86 |
-| A100-80GB | `balanced` | 64 | 4 | 64 | 2048 | 6144 | 0.78 |
-| A100-80GB | `quality` | 48 | 4 | 48 | 3072 | 8192 | 0.74 |
-| H100 | `fast` | 64 | 4 | 128 | 1536 | 5120 | 0.92 |
-| H100 | `balanced` | 64 | 4 | 64 | 2048 | 6144 | 0.93 |
-| H100 | `quality` | 48 | 4 | 48 | 3072 | 8192 | 0.93 |
+| A100-80GB | `fast` | 32 | 2 | 32 | 1024 | 3072 | 0.86 |
+| A100-80GB | `balanced` | 32 | 2 | 32 | 1536 | 4096 | 0.80 |
+| A100-80GB | `quality` | 32 | 2 | 32 | 2048 | 6144 | 0.76 |
+| H100 | `fast` | 32 | 2 | 32 | 1024 | 3072 | 0.92 |
+| H100 | `balanced` | 32 | 2 | 32 | 1536 | 4096 | 0.93 |
+| H100 | `quality` | 32 | 2 | 32 | 2048 | 6144 | 0.93 |
 
-Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. Phase 2 and Phase 4 use fewer agent workers than rollouts to reduce Ray scheduling overhead while keeping the same effective rollout batch. A100 defaults reserve less vLLM memory for larger models so the hybrid trainer can start reliably. If memory is stable and you want to push throughput, rerun with a higher `GPU_UTIL`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
+Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. The public profiles use two rollouts per prompt to preserve SDPO sibling comparison while cutting rollout cost. A100 defaults reserve enough vLLM memory for hybrid training to start reliably. If memory is stable and you want to push throughput, rerun with a higher `GPU_UTIL`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
+
+`sdpo_reliability_gate` uses `RELIABILITY_GATE_THRESHOLD=0.4` by default. This keeps successful demonstrations and safe wrong-answer feedback while skipping lower-reliability teacher-forward targets such as format-only feedback and truncated/no-target samples.
 
 When `ULTRA_QUIET=1`, Ray worker logs are hidden but a compact progress watcher remains enabled. It prints heartbeat stages while a step is running, for example `step=12/50 stage=gen_start`, and metric summaries when a step finishes, for example `step=12/50 reward=... tok_s=...`. Set `PROGRESS_WATCH=0` to disable it or `PROGRESS_INTERVAL=30` to print less often. On trainer failure, the runner prints the variant log tail plus recent Ray/vLLM error blocks; set `FAILURE_CONTEXT=0` only if you want to suppress that diagnostic output.
+
+Startup can still be slow before step 1 because each variant initializes Ray workers, FSDP, LoRA, and a vLLM engine for the selected model. The progress watcher reports these as `ray_init_start`, `task_start`, `checkpoint_local_start`, `dataset_start`, `init_workers_start`, and `fit_start`. If a short Phase 2 run spends too much time in vLLM CUDA graph capture, you may test `ENFORCE_EAGER=True`; this can reduce startup time but usually lowers generation throughput, so keep `ENFORCE_EAGER=False` for final thesis runs unless eager mode is empirically faster end to end.
 
 ## Setup
 
@@ -93,7 +96,7 @@ python experiments/math/preflight_phase.py
 export DRY_RUN=1
 export PHASE=pilot
 export TRAIN_STEPS=1
-export VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability"
+export VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"
 export RUN_TAG=preflight_dryrun
 export EXP_SUFFIX=preflight_dryrun_seed42
 export LOG_DIR="$PROJECT_ROOT/logs/sdpo_math_phase/preflight_dryrun"
@@ -107,7 +110,7 @@ python experiments/math/validate_benchmark_dryrun.py \
 
 ## Phase 1: Pilot
 
-Full benchmark shape on Qwen3-1.7B.
+Three-variant pilot on Qwen3-1.7B.
 
 %%bash
 set -euo pipefail
@@ -126,7 +129,7 @@ bash experiments/math/run_sdpo_math_benchmark.sh
 
 ## Phase 2: Scale Decision
 
-Qwen3-4B stability run before thesis scale.
+Qwen3-4B fast stability run before thesis scale.
 
 %%bash
 set -euo pipefail
@@ -138,11 +141,11 @@ source experiments/math/math_env.sh
 export PHASE=scale_decision
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
-export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability}"
-export TRAIN_STEPS="${TRAIN_STEPS:-50}"
-export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-2048}"
-export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
-export EVAL_FREQ="${EVAL_FREQ:-50}"
+export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
+export TRAIN_STEPS="${TRAIN_STEPS:-12}"
+export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-512}"
+export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-64}"
+export EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
 export SAVE_FREQ="${SAVE_FREQ:--1}"
 export VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
 export VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-0}"
@@ -152,7 +155,7 @@ export PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-60}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
 
-This Phase 2 command skips `base_model` after the baseline has already been measured, keeps the compact progress tracker visible under `ULTRA_QUIET=1`, and evaluates only at the final step. Move to thesis only if all trained variants finish, SDPO logs reprompt and feedback-used metrics, and `sdpo_reliability` logs reliability weights without reward collapse.
+This Phase 2 command keeps the compact progress tracker visible under `ULTRA_QUIET=1` and evaluates only at the final step. Move to thesis only if all trained variants finish, SDPO logs reprompt and feedback-used metrics, and `sdpo_reliability_gate` logs reliability weights plus a nonzero gate fraction without reward collapse.
 
 ## Phase 3: Inspect
 
@@ -171,7 +174,7 @@ python experiments/math/summarize_phase_results.py --log-dir "$LOG_DIR" || true
 
 ## Phase 4: Thesis
 
-Main Qwen3-8B comparison.
+Main Qwen3-8B comparison. The default is compute-bounded: 32 steps over a 1024-example training subset, with final-only validation and checkpointing.
 
 %%bash
 set -euo pipefail
@@ -183,15 +186,25 @@ source experiments/math/math_env.sh
 export PHASE=thesis
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
-export TRAIN_STEPS="${TRAIN_STEPS:-300}"
-export EVAL_FREQ="${EVAL_FREQ:-100}"
-export SAVE_FREQ="${SAVE_FREQ:-100}"
-export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
+export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
+export TRAIN_STEPS="${TRAIN_STEPS:-32}"
+export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"
+export EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
+export SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"
+export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"
 export VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
+
+For a stronger thesis run, place these overrides inside the Phase 4 cell before `bash experiments/math/run_sdpo_math_benchmark.sh`:
+
+- `export TRAIN_STEPS=64`
+- `export TRAIN_MAX_SAMPLES=2048`
+- `export VAL_MAX_SAMPLES=512`
+- `export EVAL_FREQ=64`
+- `export SAVE_FREQ=64`
 
 ## Phase 5: Report Check
 
@@ -208,7 +221,7 @@ if [[ -z "${LOG_DIR:-}" && -f logs/sdpo_math_phase/latest_thesis_log_dir.txt ]];
   LOG_DIR="$(< logs/sdpo_math_phase/latest_thesis_log_dir.txt)"
 fi
 LOG_DIR="${LOG_DIR:-$(ls -td logs/sdpo_math_phase/* | head -1)}"
-EXPECT_PROFILE="${EXPECT_PROFILE:-quality}"
+EXPECT_PROFILE="${EXPECT_PROFILE:-balanced}"
 EXPECT_SEED="${EXPECT_SEED:-42}"
 
 python experiments/math/summarize_phase_results.py --log-dir "$LOG_DIR"
@@ -224,8 +237,8 @@ cat "$LOG_DIR/summary.md"
 
 ## Report Notes
 
-Primary metric: `val-core/math_dapo/acc/mean@1`. The `base_model` variant provides the untrained baseline, so Phase 4 defaults to `VAL_BEFORE_TRAIN=False` for trained variants to avoid repeated initial validations.
+Primary metric: `val-core/math_dapo/acc/mean@1`. Phase 4 defaults to `VAL_BEFORE_TRAIN=False` for trained variants to avoid repeated initial validations. If you need a frozen reference, run `base_model` explicitly in a separate short baseline phase.
 
-Report reward, incorrect format rate, truncation rate, SDPO reprompt fraction, feedback-used fraction, reliability weight mean, throughput, seed, profile, model, hardware profile, git commit, validation dumps, and checkpoint paths.
+Report reward, incorrect format rate, truncation rate, SDPO reprompt fraction, feedback-used fraction, gated-variant reliability weight mean, gate threshold, gate fraction, throughput, seed, profile, model, hardware profile, git commit, validation dumps, and checkpoint paths.
 
 For a thesis or arXiv-level claim, add at least one external held-out math benchmark such as AIME/MathArena and repeat the thesis run with multiple seeds if compute allows.

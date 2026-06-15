@@ -75,6 +75,11 @@ def main() -> None:
         "config_name": args.config_name,
         "model": args.model,
         "variants": args.variants.split(),
+        "variant_hyperparameters": {
+            "sdpo_reliability_gate": {
+                "reliability_gate_threshold": os.environ.get("RELIABILITY_GATE_THRESHOLD", "0.4"),
+            }
+        },
         "train_steps": args.train_steps,
         "train_max_samples": args.train_max_samples,
         "val_max_samples": args.val_max_samples,

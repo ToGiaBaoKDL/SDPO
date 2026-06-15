@@ -15,8 +15,8 @@
 Note that we don't combine the main with ray_trainer as ray_trainer is used by other mpain.
 """
 
-import os
 import json
+import os
 import socket
 import time
 
@@ -85,6 +85,7 @@ def run_ppo(config, task_runner_class=None) -> None:
     """
     # Check if Ray is not initialized
     if not ray.is_initialized():
+        write_progress_heartbeat(config, "ray_init_start")
         # Initialize Ray with a local cluster configuration
         # Set environment variables in the runtime environment to control tokenizer parallelism,
         # NCCL debug level, VLLM logging level, and allow runtime LoRA updating
@@ -103,6 +104,7 @@ def run_ppo(config, task_runner_class=None) -> None:
         ray_init_kwargs = OmegaConf.create({**ray_init_kwargs, "runtime_env": runtime_env})
         print(f"ray init kwargs: {ray_init_kwargs}")
         ray.init(**OmegaConf.to_container(ray_init_kwargs))
+        write_progress_heartbeat(config, "ray_init_done")
 
     if task_runner_class is None:
         task_runner_class = ray.remote(num_cpus=1)(TaskRunner)  # please make sure main_task is not scheduled on head

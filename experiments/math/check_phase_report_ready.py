@@ -9,8 +9,8 @@ import json
 from pathlib import Path
 
 
-REQUIRED_VARIANTS = {"base_model", "base_rl", "sdpo_vanilla", "sdpo_reliability"}
-TRAINED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability"}
+REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability_gate"}
+TRAINED_VARIANTS = REQUIRED_VARIANTS
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,6 +44,11 @@ def main() -> None:
     require(manifest.get("config_name") == "sdpo_math_a100", f"unexpected config_name: {manifest.get('config_name')}")
     require(manifest.get("profile_settings"), "manifest missing profile_settings")
     require(manifest.get("effective_rollouts_per_step"), "manifest missing effective_rollouts_per_step")
+    gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+    require(
+        gate_cfg.get("reliability_gate_threshold") not in (None, ""),
+        "manifest missing sdpo_reliability_gate reliability_gate_threshold",
+    )
     if args.expect_phase:
         require(manifest.get("phase") == args.expect_phase, f"unexpected phase: {manifest.get('phase')}")
     if args.expect_model:
@@ -65,8 +70,16 @@ def main() -> None:
         if variant.startswith("sdpo_"):
             require(row["sdpo_reprompt_fraction"] != "", f"{variant} missing SDPO reprompt metric")
             require(row["sdpo_feedback_used_fraction"] != "", f"{variant} missing SDPO feedback-used metric")
-        if variant == "sdpo_reliability":
-            require(row["sdpo_reliability_weight_mean"] != "", "sdpo_reliability missing reliability weight metric")
+        if variant == "sdpo_reliability_gate":
+            require(row["sdpo_reliability_weight_mean"] != "", f"{variant} missing reliability weight metric")
+            require(
+                row.get("sdpo_reliability_gate_threshold", "") != "",
+                "sdpo_reliability_gate missing gate threshold metric",
+            )
+            require(
+                row.get("sdpo_reliability_gate_fraction", "") != "",
+                "sdpo_reliability_gate missing gate fraction metric",
+            )
 
         validation_dir = args.log_dir / "validation" / f"{variant}_{manifest['exp_suffix']}"
         require(validation_dir.exists(), f"{variant} missing validation dump dir: {validation_dir}")

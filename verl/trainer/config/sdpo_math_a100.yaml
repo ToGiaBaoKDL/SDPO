@@ -79,6 +79,7 @@ actor_rollout_ref:
       reliability_safe_feedback_weight: 0.4
       reliability_format_feedback_weight: 0.2
       reliability_truncated_weight: 0.0
+      reliability_gate_threshold: 0.0
       is_clip: 2.0
 
   ref:

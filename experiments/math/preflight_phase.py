@@ -10,7 +10,7 @@ import pyarrow.parquet as pq
 import yaml
 
 
-EXPECTED_VARIANTS = ["base_model", "base_rl", "sdpo_vanilla", "sdpo_reliability"]
+EXPECTED_VARIANTS = ["base_rl", "sdpo_vanilla", "sdpo_reliability_gate"]
 
 
 def require_snippet(path: str, text: str, snippet: str) -> None:
@@ -74,16 +74,18 @@ def main() -> None:
         "h100:fast)",
         "h100:balanced)",
         "h100:quality)",
-        "TRAIN_BS=48",
-        "TRAIN_BS=64",
-        "AGENT_WORKERS=48",
-        "AGENT_WORKERS=64",
-        "AGENT_WORKERS=128",
-        "BATCHED_TOKENS=98304",
-        "BATCHED_TOKENS=131072",
+        "TRAIN_BS=32",
+        "ROLLOUT_N=2",
+        "AGENT_WORKERS=32",
+        "RESPONSE_LEN=1024",
+        "RESPONSE_LEN=1536",
+        "RESPONSE_LEN=2048",
+        "BATCHED_TOKENS=32768",
+        "BATCHED_TOKENS=49152",
+        "BATCHED_TOKENS=65536",
         'GPU_UTIL="${GPU_UTIL:-0.86}"',
-        'GPU_UTIL="${GPU_UTIL:-0.78}"',
-        'GPU_UTIL="${GPU_UTIL:-0.74}"',
+        'GPU_UTIL="${GPU_UTIL:-0.80}"',
+        'GPU_UTIL="${GPU_UTIL:-0.76}"',
         "ENFORCE_EAGER",
         "effective_rollouts",
         'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
@@ -144,7 +146,11 @@ def main() -> None:
         "HARDWARE_PROFILE",
         "RUN_PROFILE=fast",
         "RUN_PROFILE=balanced",
-        "RUN_PROFILE=quality",
+        'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
+        'TRAIN_STEPS="${TRAIN_STEPS:-32}"',
+        'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
+        'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
+        'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
         "Refusing CONFIG_NAME",
         "Refusing MODEL_PATH",
         "--config-name \"${CONFIG_NAME}\"",
@@ -152,13 +158,35 @@ def main() -> None:
         "DRY_RUN",
         "BASE_MODEL_TRAIN_MAX_SAMPLES",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
+        "RELIABILITY_GATE_THRESHOLD",
+        "reliability_gate_threshold",
+        "sdpo_reliability_gate",
     ]:
         require_snippet(runner_path, runner, snippet)
+
+    manifest_path = "experiments/math/write_phase_manifest.py"
+    manifest = Path(manifest_path).read_text(encoding="utf-8")
+    for snippet in [
+        "variant_hyperparameters",
+        "sdpo_reliability_gate",
+        "RELIABILITY_GATE_THRESHOLD",
+    ]:
+        require_snippet(manifest_path, manifest, snippet)
+
+    report_ready_path = "experiments/math/check_phase_report_ready.py"
+    report_ready = Path(report_ready_path).read_text(encoding="utf-8")
+    for snippet in [
+        'REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability_gate"}',
+        "sdpo_reliability_gate",
+        "reliability_gate_threshold",
+    ]:
+        require_snippet(report_ready_path, report_ready, snippet)
 
     main_ppo_path = "verl/trainer/main_ppo.py"
     main_ppo = Path(main_ppo_path).read_text(encoding="utf-8")
     for snippet in [
         "def write_progress_heartbeat",
+        'write_progress_heartbeat(config, "ray_init_start")',
         'write_progress_heartbeat(config, "task_start")',
         'write_progress_heartbeat(config, "init_workers_start")',
         'write_progress_heartbeat(config, "fit_start")',

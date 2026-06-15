@@ -20,6 +20,8 @@ PROGRESS_KEYS = {
     "self_distillation/reprompt_sample_fraction": "reprompt",
     "self_distillation/feedback_used_fraction": "feedback",
     "self_distillation/reliability_weight_mean": "rel_w",
+    "self_distillation/reliability_gate_threshold": "gate_thr",
+    "self_distillation/reliability_gate_target_fraction": "gate",
     "actor/pg_loss": "pg_loss",
     "actor/grad_norm": "grad",
     "perf/throughput": "tok_s",

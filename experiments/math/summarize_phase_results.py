@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 
-VARIANTS = ["base_model", "base_rl", "sdpo_vanilla", "sdpo_reliability"]
+VARIANTS = ["base_rl", "sdpo_vanilla", "sdpo_reliability_gate", "base_model"]
 SUMMARY_COLUMNS = [
     "variant",
     "step",
@@ -27,6 +27,8 @@ SUMMARY_COLUMNS = [
     "sdpo_reprompt_fraction",
     "sdpo_feedback_used_fraction",
     "sdpo_reliability_weight_mean",
+    "sdpo_reliability_gate_threshold",
+    "sdpo_reliability_gate_fraction",
     "actor_pg_loss",
     "actor_grad_norm",
     "throughput_tokens_per_s",
@@ -150,6 +152,8 @@ def summarize_metric_file(path: Path) -> dict[str, Any]:
         "sdpo_reprompt_fraction": data.get("self_distillation/reprompt_sample_fraction", ""),
         "sdpo_feedback_used_fraction": data.get("self_distillation/feedback_used_fraction", ""),
         "sdpo_reliability_weight_mean": data.get("self_distillation/reliability_weight_mean", ""),
+        "sdpo_reliability_gate_threshold": data.get("self_distillation/reliability_gate_threshold", ""),
+        "sdpo_reliability_gate_fraction": data.get("self_distillation/reliability_gate_target_fraction", ""),
         "actor_pg_loss": data.get("actor/pg_loss", ""),
         "actor_grad_norm": data.get("actor/grad_norm", ""),
         "throughput_tokens_per_s": data.get("perf/throughput", ""),
@@ -176,6 +180,8 @@ def summarize_console_log(path: Path) -> dict[str, Any]:
         "sdpo_reprompt_fraction": data.get("self_distillation/reprompt_sample_fraction", ""),
         "sdpo_feedback_used_fraction": data.get("self_distillation/feedback_used_fraction", ""),
         "sdpo_reliability_weight_mean": data.get("self_distillation/reliability_weight_mean", ""),
+        "sdpo_reliability_gate_threshold": data.get("self_distillation/reliability_gate_threshold", ""),
+        "sdpo_reliability_gate_fraction": data.get("self_distillation/reliability_gate_target_fraction", ""),
         "actor_pg_loss": data.get("actor/pg_loss", ""),
         "actor_grad_norm": data.get("actor/grad_norm", ""),
         "throughput_tokens_per_s": data.get("perf/throughput", ""),

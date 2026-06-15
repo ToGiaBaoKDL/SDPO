@@ -774,6 +774,7 @@ class RayPPOTrainer:
 
         weight_tensor = torch.tensor(weights, dtype=torch.float32, device=device)
         nonzero = weight_tensor > 0
+        gate_threshold = float(self_distillation_cfg.get("reliability_gate_threshold", 0.0) or 0.0)
         batch_size = max(len(weights), 1)
         metrics = {
             "self_distillation/reliability_weight_mean": weight_tensor.mean().item() if len(weights) > 0 else 0.0,
@@ -783,6 +784,17 @@ class RayPPOTrainer:
             "self_distillation/reliability_format_feedback_weight_fraction": format_feedback_count / batch_size,
             "self_distillation/reliability_truncated_weight_fraction": truncated_count / batch_size,
         }
+        if gate_threshold > 0:
+            gated = weight_tensor >= gate_threshold
+            metrics.update(
+                {
+                    "self_distillation/reliability_gate_threshold": gate_threshold,
+                    "self_distillation/reliability_gate_target_fraction": gated.float().mean().item()
+                    if len(weights) > 0
+                    else 0.0,
+                    "self_distillation/reliability_gate_target_count": gated.sum().item(),
+                }
+            )
         return weight_tensor, metrics
 
 

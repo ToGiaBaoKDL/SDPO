@@ -41,10 +41,30 @@ for path, expected in expected_defaults.items():
 runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding="utf-8")
 for expected in ["Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "Qwen/Qwen3-8B"]:
     assert expected in runner, f"benchmark runner missing model default {expected}"
+for snippet in [
+    'VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"',
+    'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
+    'TRAIN_STEPS="${TRAIN_STEPS:-32}"',
+    'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
+    'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
+    'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
+    'RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"',
+    'actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}"',
+]:
+    assert snippet in runner, f"benchmark runner missing gate/default logic: {snippet}"
+
+manifest = Path("experiments/math/write_phase_manifest.py").read_text(encoding="utf-8")
+for snippet in [
+    "variant_hyperparameters",
+    "sdpo_reliability_gate",
+    "RELIABILITY_GATE_THRESHOLD",
+]:
+    assert snippet in manifest, f"manifest writer missing gate hyperparameter: {snippet}"
 
 main_ppo = Path("verl/trainer/main_ppo.py").read_text(encoding="utf-8")
 for snippet in [
     "def write_progress_heartbeat",
+    'write_progress_heartbeat(config, "ray_init_start")',
     'write_progress_heartbeat(config, "task_start")',
     'write_progress_heartbeat(config, "init_workers_start")',
     'write_progress_heartbeat(config, "fit_start")',
@@ -82,10 +102,9 @@ for snippet in [
     "h100:fast)",
     "h100:balanced)",
     "h100:quality)",
-    "AGENT_WORKERS=48",
-    "AGENT_WORKERS=64",
-    "TRAIN_BS=64",
-    "AGENT_WORKERS=128",
+    "TRAIN_BS=32",
+    "ROLLOUT_N=2",
+    "AGENT_WORKERS=32",
     'ENFORCE_EAGER="${ENFORCE_EAGER:-False}"',
     'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
 ]:
@@ -139,6 +158,7 @@ assert cfg["actor_rollout_ref"]["rollout"]["enforce_eager"] is True
 assert cfg["actor_rollout_ref"]["rollout"]["val_kwargs"]["temperature"] == 0.01
 assert cfg["actor_rollout_ref"]["model"]["lora_rank"] > 0
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_weighting"] is False
+assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_threshold"] == 0.0
 assert cfg["trainer"]["n_gpus_per_node"] == 2
 assert cfg["reward_manager"]["name"] == "naive"
 print("config ok")
@@ -243,7 +263,7 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=a100 \
 PHASE=pilot \
 TRAIN_STEPS=1 \
-VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability" \
+VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_dryrun \
 EXP_SUFFIX=cpu_pipeline_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun" \
@@ -259,7 +279,7 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=h100 \
 PHASE=pilot \
 TRAIN_STEPS=1 \
-VARIANTS="base_model base_rl sdpo_vanilla sdpo_reliability" \
+VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_h100_dryrun \
 EXP_SUFFIX=cpu_pipeline_h100_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_h100_dryrun" \

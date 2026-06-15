@@ -64,6 +64,8 @@ class SelfDistillationConfig(BaseConfig):
         reliability_safe_feedback_weight (float): Weight for non-format safe feedback targets.
         reliability_format_feedback_weight (float): Weight for format-only feedback targets.
         reliability_truncated_weight (float): Weight for truncated targets.
+        reliability_gate_threshold (float): If positive, only samples with reliability weight greater
+            than or equal to this threshold run the SDPO teacher forward.
         reprompt_template_feedback (str): Template for reprompting with feedback but no solution.
         reprompt_template_feedback_solution (str): Template for reprompting with both feedback and solution.
     """
@@ -102,6 +104,7 @@ class SelfDistillationConfig(BaseConfig):
     reliability_safe_feedback_weight: float = 0.4
     reliability_format_feedback_weight: float = 0.2
     reliability_truncated_weight: float = 0.0
+    reliability_gate_threshold: float = 0.0
 
     def __post_init__(self):
         if not 0.0 <= self.alpha <= 1.0:
@@ -128,10 +131,16 @@ class SelfDistillationConfig(BaseConfig):
             "reliability_safe_feedback_weight": self.reliability_safe_feedback_weight,
             "reliability_format_feedback_weight": self.reliability_format_feedback_weight,
             "reliability_truncated_weight": self.reliability_truncated_weight,
+            "reliability_gate_threshold": self.reliability_gate_threshold,
         }
         for field_name, value in reliability_fields.items():
             if value < 0:
                 raise ValueError(f"self_distillation.{field_name} must be non-negative, got {value}")
+        if self.reliability_gate_threshold > 0 and not self.reliability_weighting:
+            raise ValueError(
+                "self_distillation.reliability_gate_threshold requires "
+                "self_distillation.reliability_weighting=True"
+            )
 
 
 @dataclass

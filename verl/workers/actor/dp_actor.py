@@ -809,48 +809,93 @@ class DataParallelPPOActor(BasePPOActor):
                     rollout_is_weights = model_inputs.get("rollout_is_weights", None)
 
                     if self_distillation_enabled:
-                        teacher_inputs = {
-                            "responses": model_inputs["responses"],
-                            "input_ids": model_inputs["teacher_input_ids"],
-                            "attention_mask": model_inputs["teacher_attention_mask"],
-                            "position_ids": model_inputs["teacher_position_ids"],
-                        }
-                        teacher_model = self.teacher_module or self.actor_module
-                        if teacher_regularization == "trust-region" and (
-                            self.teacher_module is None or self.teacher_module is self.actor_module
-                        ):
-                            raise ValueError("trust-region teacher requires a separate teacher_module in the actor worker.")
-                        with torch.no_grad():
-                            teacher_outputs = self._forward_micro_batch(
-                                teacher_inputs,
-                                temperature=temperature,
-                                calculate_entropy=False,
-                                return_all_logps=return_all_logps,
-                                distill_topk=distill_topk,
-                                topk_indices=student_topk_indices,
-                                module=teacher_model,
-                            )
-                        teacher_log_prob = teacher_outputs["log_probs"]
-                        teacher_all_logps = teacher_outputs.get("all_logps") if return_all_logps else None
-                        teacher_topk_logps = teacher_outputs.get("topk_logps") if distill_topk else None
-                        pg_loss, pg_metrics = compute_self_distillation_loss(
-                            student_log_probs=log_prob,
-                            teacher_log_probs=teacher_log_prob,
-                            response_mask=response_mask,
-                            self_distillation_config=self_distillation_cfg,
-                            old_log_probs=old_log_prob,
-                            student_all_log_probs=student_all_logps,
-                            teacher_all_log_probs=teacher_all_logps,
-                            student_topk_log_probs=student_topk_logps,
-                            teacher_topk_log_probs=teacher_topk_logps,
-                            self_distillation_mask=self_distillation_mask,
-                            self_distillation_weight=self_distillation_weight,
-                            loss_agg_mode=loss_agg_mode,
-                            rollout_is_weights=rollout_is_weights,
+                        reliability_gate_threshold = float(
+                            self_distillation_cfg.get("reliability_gate_threshold", 0.0) or 0.0
                         )
+                        reliability_gate_mask = None
+                        gate_metrics = {}
+                        if reliability_gate_threshold > 0:
+                            if self_distillation_weight is not None:
+                                reliability_gate_mask = self_distillation_weight >= reliability_gate_threshold
+                            elif self_distillation_mask is not None:
+                                reliability_gate_mask = self_distillation_mask > 0
+                            else:
+                                reliability_gate_mask = torch.ones(
+                                    log_prob.shape[0], dtype=torch.bool, device=log_prob.device
+                                )
+                            gate_count = reliability_gate_mask.sum()
+                            gate_metrics = {
+                                "self_distillation/reliability_gate_threshold_actor": reliability_gate_threshold,
+                                "self_distillation/reliability_gate_target_fraction_actor": reliability_gate_mask.float()
+                                .mean()
+                                .detach()
+                                .item(),
+                                "self_distillation/reliability_gate_target_count_actor": gate_count.detach().item(),
+                            }
+                            empty_gate_batch = gate_count.item() == 0
+                        else:
+                            empty_gate_batch = False
+
+                        def _select_distill_rows(tensor):
+                            if tensor is None or reliability_gate_mask is None:
+                                return tensor
+                            return tensor[reliability_gate_mask]
+
+                        if empty_gate_batch:
+                            pg_loss = log_prob.sum() * 0.0
+                            pg_metrics = {
+                                **gate_metrics,
+                                "self_distillation/empty_target_batch": 1.0,
+                            }
+                        else:
+                            selected_topk_indices = _select_distill_rows(student_topk_indices)
+                            teacher_inputs = {
+                                "responses": _select_distill_rows(model_inputs["responses"]),
+                                "input_ids": _select_distill_rows(model_inputs["teacher_input_ids"]),
+                                "attention_mask": _select_distill_rows(model_inputs["teacher_attention_mask"]),
+                                "position_ids": _select_distill_rows(model_inputs["teacher_position_ids"]),
+                            }
+                            teacher_model = self.teacher_module or self.actor_module
+                            if teacher_regularization == "trust-region" and (
+                                self.teacher_module is None or self.teacher_module is self.actor_module
+                            ):
+                                raise ValueError(
+                                    "trust-region teacher requires a separate teacher_module in the actor worker."
+                                )
+                            with torch.no_grad():
+                                teacher_outputs = self._forward_micro_batch(
+                                    teacher_inputs,
+                                    temperature=temperature,
+                                    calculate_entropy=False,
+                                    return_all_logps=return_all_logps,
+                                    distill_topk=distill_topk,
+                                    topk_indices=selected_topk_indices,
+                                    module=teacher_model,
+                                )
+                            teacher_log_prob = teacher_outputs["log_probs"]
+                            teacher_all_logps = teacher_outputs.get("all_logps") if return_all_logps else None
+                            teacher_topk_logps = teacher_outputs.get("topk_logps") if distill_topk else None
+                            pg_loss, pg_metrics = compute_self_distillation_loss(
+                                student_log_probs=_select_distill_rows(log_prob),
+                                teacher_log_probs=teacher_log_prob,
+                                response_mask=_select_distill_rows(response_mask),
+                                self_distillation_config=self_distillation_cfg,
+                                old_log_probs=_select_distill_rows(old_log_prob),
+                                student_all_log_probs=_select_distill_rows(student_all_logps),
+                                teacher_all_log_probs=teacher_all_logps,
+                                student_topk_log_probs=_select_distill_rows(student_topk_logps),
+                                teacher_topk_log_probs=teacher_topk_logps,
+                                self_distillation_mask=_select_distill_rows(self_distillation_mask),
+                                self_distillation_weight=_select_distill_rows(self_distillation_weight),
+                                loss_agg_mode=loss_agg_mode,
+                                rollout_is_weights=_select_distill_rows(rollout_is_weights),
+                            )
+                            pg_metrics.update(gate_metrics)
 
                         effective_target = self_distillation_weight if self_distillation_weight is not None else self_distillation_mask
-                        pg_metrics["self_distillation/empty_target_batch"] = effective_target.sum().item() == 0
+                        if reliability_gate_mask is not None:
+                            effective_target = reliability_gate_mask
+                        pg_metrics["self_distillation/empty_target_batch"] = float(effective_target.sum().item() == 0)
                         micro_batch_metrics.update(pg_metrics)
                     else:
                         # gpg -> verl.trainer.ppo.core_algos.compute_policy_loss_gpg

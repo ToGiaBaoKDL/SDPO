@@ -15,11 +15,12 @@ PHASE="${PHASE:-pilot}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 LOGGER="${LOGGER:-[\"console\"]}"
 CONFIG_NAME="${CONFIG_NAME:-sdpo_math_a100}"
-VARIANTS="${VARIANTS:-base_model base_rl sdpo_vanilla sdpo_reliability}"
+VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 DRY_RUN="${DRY_RUN:-0}"
 SEED="${SEED:-42}"
 VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-1}"
 HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
+RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"
 
 case "${HARDWARE_PROFILE}" in
   a100|h100)
@@ -47,28 +48,28 @@ case "${PHASE}" in
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Pilot}"
     ;;
   scale_decision)
-    RUN_PROFILE=balanced
+    RUN_PROFILE=fast
     MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-4B}}"
-    TRAIN_STEPS="${TRAIN_STEPS:-50}"
+    TRAIN_STEPS="${TRAIN_STEPS:-12}"
     if [[ "${HARDWARE_PROFILE}" == "h100" ]]; then
-      TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-4096}"
+      TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-512}"
     else
-      TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-4096}"
+      TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-512}"
     fi
-    VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"
+    VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-64}"
     EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
     SAVE_FREQ="${SAVE_FREQ:--1}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-Decision}"
     ;;
   thesis)
-    RUN_PROFILE=quality
+    RUN_PROFILE=balanced
     MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}}"
-    TRAIN_STEPS="${TRAIN_STEPS:-300}"
-    TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:--1}"
-    VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
-    EVAL_FREQ="${EVAL_FREQ:-100}"
-    SAVE_FREQ="${SAVE_FREQ:-100}"
+    TRAIN_STEPS="${TRAIN_STEPS:-32}"
+    TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"
+    VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"
+    EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
+    SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Thesis}"
     ;;
@@ -92,7 +93,7 @@ case "${MODEL_PATH}" in
     ;;
 esac
 
-export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH HARDWARE_PROFILE
+export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH HARDWARE_PROFILE RELIABILITY_GATE_THRESHOLD
 export TRAIN_MAX_SAMPLES VAL_MAX_SAMPLES SEED
 
 RUN_TAG="${RUN_TAG:-${PHASE}_${HARDWARE_PROFILE}_${RUN_PROFILE}_${TRAIN_STEPS}_$(date +%Y%m%d_%H%M%S)}"
@@ -108,6 +109,7 @@ sdpo_math_prepare_phase_run "${RUN_PROFILE}" "${LOG_DIR}"
 
 echo "phase=${PHASE} model=${MODEL_PATH} variants=${VARIANTS} dry_run=${DRY_RUN}"
 echo "hardware=${HARDWARE_PROFILE}"
+echo "reliability_gate_threshold=${RELIABILITY_GATE_THRESHOLD}"
 echo "steps=${TRAIN_STEPS} train_max=${TRAIN_MAX_SAMPLES} val_max=${VAL_MAX_SAMPLES} eval_freq=${EVAL_FREQ} save_freq=${SAVE_FREQ} seed=${SEED}"
 echo "exp_suffix=${EXP_SUFFIX}"
 echo "logs=${LOG_DIR}"
@@ -210,6 +212,7 @@ run_base_model_val() {
       actor_rollout_ref.actor.policy_loss.loss_mode=vanilla \
       actor_rollout_ref.actor.self_distillation.include_environment_feedback=False \
       actor_rollout_ref.actor.self_distillation.reliability_weighting=False \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0 \
       "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
       "${COMMON_OVERRIDES[@]}" \
       "$@"
@@ -236,6 +239,7 @@ run_base_rl() {
       actor_rollout_ref.actor.policy_loss.loss_mode=vanilla \
       actor_rollout_ref.actor.self_distillation.include_environment_feedback=False \
       actor_rollout_ref.actor.self_distillation.reliability_weighting=False \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0 \
       "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
       "${COMMON_OVERRIDES[@]}" \
       "$@"
@@ -247,12 +251,14 @@ run_sdpo_variant() {
   shift 2
   local include_feedback=True
   local reliability=False
+  local reliability_gate_threshold=0.0
 
   case "${variant}" in
     sdpo_vanilla)
       ;;
-    sdpo_reliability)
+    sdpo_reliability_gate)
       reliability=True
+      reliability_gate_threshold="${RELIABILITY_GATE_THRESHOLD}"
       ;;
     *)
       echo "Unknown SDPO variant=${variant}" >&2
@@ -278,6 +284,7 @@ run_sdpo_variant() {
       actor_rollout_ref.actor.policy_loss.loss_mode=sdpo \
       actor_rollout_ref.actor.self_distillation.include_environment_feedback="${include_feedback}" \
       actor_rollout_ref.actor.self_distillation.reliability_weighting="${reliability}" \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}" \
       "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
       "${COMMON_OVERRIDES[@]}" \
       "$@"
@@ -294,11 +301,11 @@ for variant in ${VARIANTS}; do
     base_rl)
       run_base_rl "${exp_name}" "$@"
       ;;
-    sdpo_vanilla|sdpo_reliability)
+    sdpo_vanilla|sdpo_reliability_gate)
       run_sdpo_variant "${variant}" "${exp_name}" "$@"
       ;;
     *)
-      echo "Unknown variant=${variant}. Valid: base_model base_rl sdpo_vanilla sdpo_reliability." >&2
+      echo "Unknown variant=${variant}. Valid: base_model base_rl sdpo_vanilla sdpo_reliability_gate." >&2
       exit 1
       ;;
   esac
