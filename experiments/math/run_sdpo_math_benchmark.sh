@@ -143,15 +143,55 @@ run_with_log() {
     } | tee "${LOG_DIR}/${exp_name}.log"
     return 0
   fi
+  local progress_pid=""
+  local progress_total_steps="${PROGRESS_TOTAL_STEPS:-${TRAIN_STEPS}}"
+  cleanup_interrupted_run() {
+    local signal_name="$1"
+    trap - INT TERM
+    echo
+    echo "interrupted signal=${signal_name}; stopping progress watcher and Ray"
+    if [[ -n "${progress_pid}" ]]; then
+      kill "${progress_pid}" >/dev/null 2>&1 || true
+      wait "${progress_pid}" >/dev/null 2>&1 || true
+    fi
+    ray stop --force >/dev/null 2>&1 || true
+    return 130
+  }
+  if [[ "${PROGRESS_WATCH:-1}" == "1" && "${LOGGER}" == '["file"]' ]]; then
+    python3 "${SCRIPT_DIR}/watch_phase_progress.py" \
+      --log-dir "${LOG_DIR}" \
+      --experiment-name "${exp_name}" \
+      --total-steps "${progress_total_steps}" \
+      --interval "${PROGRESS_INTERVAL:-15}" &
+    progress_pid="$!"
+  fi
+  local command_start_epoch
+  command_start_epoch="$(date +%s)"
+  trap 'cleanup_interrupted_run INT; return 130' INT
+  trap 'cleanup_interrupted_run TERM; return 143' TERM
   ray stop --force >/dev/null 2>&1 || true
+  set +e
   "$@" 2>&1 | tee "${LOG_DIR}/${exp_name}.log"
+  local command_status="${PIPESTATUS[0]}"
+  set -e
+  trap - INT TERM
+  if [[ -n "${progress_pid}" ]]; then
+    kill "${progress_pid}" >/dev/null 2>&1 || true
+    wait "${progress_pid}" >/dev/null 2>&1 || true
+  fi
+  if [[ "${command_status}" != "0" && "${FAILURE_CONTEXT:-1}" == "1" ]]; then
+    python3 "${SCRIPT_DIR}/print_failure_context.py" \
+      --variant-log "${LOG_DIR}/${exp_name}.log" \
+      --since-epoch "${command_start_epoch}" || true
+  fi
+  return "${command_status}"
 }
 
 run_base_model_val() {
   local exp_name="$1"
   shift
   local base_model_train_max_samples="${BASE_MODEL_TRAIN_MAX_SAMPLES:-$((TRAIN_BS * 2))}"
-  run_with_log "${exp_name}" \
+  PROGRESS_TOTAL_STEPS=0 run_with_log "${exp_name}" \
     python3 -m verl.trainer.main_ppo \
       --config-name "${CONFIG_NAME}" \
       actor_rollout_ref.model.path="${MODEL_PATH}" \

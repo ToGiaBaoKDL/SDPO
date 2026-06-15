@@ -18,10 +18,12 @@ bash -n \
   experiments/math/run_sdpo_math_smoke.sh
 "${PYTHON_BIN}" -m py_compile \
   experiments/math/preflight_phase.py \
+  experiments/math/print_failure_context.py \
   experiments/math/check_phase_report_ready.py \
   experiments/math/inspect_phase_logs.py \
   experiments/math/summarize_phase_results.py \
   experiments/math/verify_hf_models.py \
+  experiments/math/watch_phase_progress.py \
   experiments/math/write_phase_manifest.py \
   experiments/math/validate_benchmark_dryrun.py
 "${PYTHON_BIN}" - <<'PY'

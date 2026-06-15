@@ -43,6 +43,8 @@ Profile settings are selected by `HARDWARE_PROFILE`:
 
 Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. A100 defaults reserve less vLLM memory for larger models so the hybrid trainer can start reliably. If memory is stable and you want to push throughput, rerun with a higher `GPU_UTIL`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
 
+When `ULTRA_QUIET=1`, Ray worker logs are hidden but a compact progress watcher remains enabled. It prints lines like `[progress] sdpo_reliability... step=12/50 reward=... tok_s=...` from the structured file logger. Set `PROGRESS_WATCH=0` to disable it or `PROGRESS_INTERVAL=30` to print less often. On trainer failure, the runner prints the variant log tail plus recent Ray/vLLM error blocks; set `FAILURE_CONTEXT=0` only if you want to suppress that diagnostic output.
+
 ## Setup
 
 Run once per fresh notebook VM.
@@ -136,6 +138,7 @@ export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
 export TRAIN_STEPS="${TRAIN_STEPS:-50}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
+export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
 
@@ -175,6 +178,7 @@ export EVAL_FREQ="${EVAL_FREQ:-100}"
 export SAVE_FREQ="${SAVE_FREQ:-100}"
 export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
+export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
 
