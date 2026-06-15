@@ -42,6 +42,15 @@ runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding=
 for expected in ["Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "Qwen/Qwen3-8B"]:
     assert expected in runner, f"benchmark runner missing model default {expected}"
 
+main_ppo = Path("verl/trainer/main_ppo.py").read_text(encoding="utf-8")
+for snippet in [
+    "def write_progress_heartbeat",
+    'write_progress_heartbeat(config, "task_start")',
+    'write_progress_heartbeat(config, "init_workers_start")',
+    'write_progress_heartbeat(config, "fit_start")',
+]:
+    assert snippet in main_ppo, f"main_ppo missing startup progress heartbeat: {snippet}"
+
 trainer = Path("verl/trainer/ppo/ray_trainer.py").read_text(encoding="utf-8")
 for snippet in [
     "def _progress_heartbeat",

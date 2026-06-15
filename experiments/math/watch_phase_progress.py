@@ -84,7 +84,7 @@ def heartbeat_line(experiment_name: str, row: dict[str, Any], total_steps: int) 
         prefix = f"[progress] {experiment_name} step={step}"
 
     parts = [prefix, f"stage={row.get('event', 'unknown')}"]
-    for key in ("validation",):
+    for key in ("validation", "model", "train_rows", "val_rows"):
         if key in row:
             parts.append(f"{key}={row[key]}")
     return " ".join(parts)

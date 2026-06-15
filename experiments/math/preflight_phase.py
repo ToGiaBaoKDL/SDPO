@@ -155,6 +155,16 @@ def main() -> None:
     ]:
         require_snippet(runner_path, runner, snippet)
 
+    main_ppo_path = "verl/trainer/main_ppo.py"
+    main_ppo = Path(main_ppo_path).read_text(encoding="utf-8")
+    for snippet in [
+        "def write_progress_heartbeat",
+        'write_progress_heartbeat(config, "task_start")',
+        'write_progress_heartbeat(config, "init_workers_start")',
+        'write_progress_heartbeat(config, "fit_start")',
+    ]:
+        require_snippet(main_ppo_path, main_ppo, snippet)
+
     trainer_path = "verl/trainer/ppo/ray_trainer.py"
     trainer = Path(trainer_path).read_text(encoding="utf-8")
     for snippet in [
