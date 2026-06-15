@@ -4,7 +4,7 @@ Notebook-ready commands for SDPO-Math on 2 GPUs. Default hardware is 2x A100-80G
 
 Central files:
 
-- `experiments/math/setup_math_notebook.sh`: Python 3.12 uv environment, dependencies, data, CPU checks.
+- `experiments/math/setup_math_notebook.sh`: Python 3.12 uv environment, uv-based dependency install, data, CPU checks.
 - `experiments/math/math_env.sh`: repo paths, cache paths, quiet logging, Qwen3 defaults.
 - `experiments/math/phase_common.sh`: hardware-optimized `fast`, `balanced`, `quality` profiles.
 - `experiments/math/run_sdpo_math_benchmark.sh`: one runner for all benchmark phases.
@@ -43,7 +43,7 @@ Profile settings are selected by `HARDWARE_PROFILE`:
 
 Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. Phase 2 and Phase 4 use fewer agent workers than rollouts to reduce Ray scheduling overhead while keeping the same effective rollout batch. A100 defaults reserve less vLLM memory for larger models so the hybrid trainer can start reliably. If memory is stable and you want to push throughput, rerun with a higher `GPU_UTIL`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
 
-When `ULTRA_QUIET=1`, Ray worker logs are hidden but a compact progress watcher remains enabled. It prints lines like `[progress] sdpo_reliability... step=12/50 reward=... tok_s=...` from the structured file logger. Set `PROGRESS_WATCH=0` to disable it or `PROGRESS_INTERVAL=30` to print less often. On trainer failure, the runner prints the variant log tail plus recent Ray/vLLM error blocks; set `FAILURE_CONTEXT=0` only if you want to suppress that diagnostic output.
+When `ULTRA_QUIET=1`, Ray worker logs are hidden but a compact progress watcher remains enabled. It prints heartbeat stages while a step is running, for example `step=12/50 stage=gen_start`, and metric summaries when a step finishes, for example `step=12/50 reward=... tok_s=...`. Set `PROGRESS_WATCH=0` to disable it or `PROGRESS_INTERVAL=30` to print less often. On trainer failure, the runner prints the variant log tail plus recent Ray/vLLM error blocks; set `FAILURE_CONTEXT=0` only if you want to suppress that diagnostic output.
 
 ## Setup
 
@@ -69,6 +69,8 @@ Useful setup flags:
 - `RUN_CPU_CHECK=1`: run CPU/static checks during setup.
 - `VERIFY_HF_MODELS=1`: add a lightweight Hugging Face metadata check during setup.
 - `INSTALL_MATH_VERIFY=0`: skip `math-verify`; keep it enabled for thesis.
+
+Setup uses `uv venv` and `uv pip install` for all Python package installs. If `uv` is missing, the setup script bootstraps the `uv` binary with the official installer and then continues with `uv`.
 
 ## Phase 0: Preflight
 

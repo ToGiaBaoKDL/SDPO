@@ -16,6 +16,32 @@ NUMPY_SPEC="${NUMPY_SPEC:-numpy==2.1.0}"
 SKIP_INSTALL_IF_READY="${SKIP_INSTALL_IF_READY:-1}"
 FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
 
+ensure_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "uv_not_found=1 installing_uv=1"
+  if ! command -v curl >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+uv is required, and curl is not available to install it.
+Install uv first, then rerun setup_math_notebook.sh.
+EOF
+    exit 1
+  fi
+
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="${HOME}/.local/bin:${PATH}"
+
+  if ! command -v uv >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+uv installation finished, but uv is not on PATH.
+Open a new shell or add ~/.local/bin to PATH, then rerun setup_math_notebook.sh.
+EOF
+    exit 1
+  fi
+}
+
 if [[ "${SDPO_PYTHON_VERSION}" != 3.12* && "${ALLOW_UNTESTED_PYTHON}" != "1" ]]; then
   cat >&2 <<EOF
 Unsupported SDPO_PYTHON_VERSION=${SDPO_PYTHON_VERSION}.
@@ -40,6 +66,9 @@ echo "numpy_spec=${NUMPY_SPEC}"
 echo "skip_install_if_ready=${SKIP_INSTALL_IF_READY}"
 echo "force_reinstall=${FORCE_REINSTALL}"
 echo "vllm_worker_multiproc_method=${VLLM_WORKER_MULTIPROC_METHOD}"
+
+ensure_uv
+echo "uv_version=$(uv --version)"
 
 if [[ -x .venv/bin/python ]]; then
   EXISTING_PYTHON_VERSION="$(
@@ -99,7 +128,6 @@ if [[ "${VENV_READY}" == "1" ]]; then
   echo "venv_ready=1 skip_dependency_install=1"
 else
   echo "venv_ready=0 installing_dependencies=1"
-  python3 -m pip install -q -U uv
   uv venv .venv --python "${SDPO_PYTHON_VERSION}"
 fi
 
@@ -109,7 +137,6 @@ source "${SCRIPT_DIR}/math_env.sh"
 
 python --version
 if [[ "${VENV_READY}" != "1" ]]; then
-  uv pip install -q -U pip
   uv pip install -q pyyaml pyarrow pandas datasets
   uv pip install -q -e ".[vllm]"
 

@@ -42,6 +42,26 @@ runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding=
 for expected in ["Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "Qwen/Qwen3-8B"]:
     assert expected in runner, f"benchmark runner missing model default {expected}"
 
+trainer = Path("verl/trainer/ppo/ray_trainer.py").read_text(encoding="utf-8")
+for snippet in [
+    "def _progress_heartbeat",
+    "VERL_FILE_LOGGER_ROOT",
+    ".progress.jsonl",
+    'self._progress_heartbeat("step_start")',
+    'self._progress_heartbeat("gen_start")',
+    'self._progress_heartbeat("actor_update_done")',
+]:
+    assert snippet in trainer, f"trainer missing progress heartbeat: {snippet}"
+
+watcher = Path("experiments/math/watch_phase_progress.py").read_text(encoding="utf-8")
+for snippet in [
+    "def progress_path",
+    "waiting_for_progress",
+    "stage=",
+    "read_jsonl_from",
+]:
+    assert snippet in watcher, f"watcher missing progress heartbeat support: {snippet}"
+
 phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-8")
 assert "+ray_kwargs.ray_init.log_to_driver=False" in phase_common
 assert "+ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT=" in phase_common
@@ -73,10 +93,16 @@ for snippet in [
     'VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-0}"',
     'SKIP_INSTALL_IF_READY="${SKIP_INSTALL_IF_READY:-1}"',
     'FORCE_REINSTALL="${FORCE_REINSTALL:-0}"',
+    "ensure_uv",
+    "uv venv .venv",
+    'uv pip install -q -e ".[vllm]"',
     "skip_dependency_install=1",
 ]:
     assert snippet in setup, f"setup script missing lightweight default: {snippet}"
 for snippet in [
+    "python3 -m pip",
+    "python -m pip",
+    "uv pip install -q -U pip",
     "RUN_TRANSFORMERS_LOAD_SMOKE",
     "--load-smoke-model",
     "RUN_VLLM_LOAD_SMOKE",

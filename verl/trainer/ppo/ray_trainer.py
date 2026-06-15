@@ -375,6 +375,32 @@ class RayPPOTrainer:
 
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
 
+    def _progress_heartbeat(self, event: str, **fields: Any) -> None:
+        """Write a lightweight driver-side progress event for file-logged runs."""
+        root_path = os.getenv("VERL_FILE_LOGGER_ROOT")
+        if not root_path:
+            return
+
+        try:
+            directory = os.path.join(
+                os.path.expanduser(root_path),
+                str(self.config.trainer.project_name),
+            )
+            os.makedirs(directory, exist_ok=True)
+            filepath = os.path.join(directory, f"{self.config.trainer.experiment_name}.progress.jsonl")
+            payload = {
+                "time": time.time(),
+                "event": event,
+                "step": int(getattr(self, "global_steps", 0)),
+                "total_steps": int(getattr(self, "total_training_steps", 0) or 0),
+            }
+            payload.update(fields)
+            with open(filepath, "a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=True, sort_keys=True) + "\n")
+        except Exception:
+            # Progress reporting must never affect training.
+            return
+
     def _create_dataloader(self, train_dataset, val_dataset, collate_fn, train_sampler: Optional[Sampler]):
         """
         Creates the train and validation dataloaders.
@@ -1688,11 +1714,14 @@ class RayPPOTrainer:
         # perform validation before training
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
+            self._progress_heartbeat("validation_start", validation="initial")
             val_metrics = self._validate()
             assert val_metrics, f"{val_metrics=}"
             pprint(f"Initial validation metrics: {val_metrics}")
             logger.log(data=val_metrics, step=self.global_steps)
+            self._progress_heartbeat("validation_done", validation="initial")
             if self.config.trainer.get("val_only", False):
+                self._progress_heartbeat("val_only_done")
                 return
 
         if self.config.actor_rollout_ref.rollout.get("skip_rollout", False):
@@ -1701,6 +1730,7 @@ class RayPPOTrainer:
 
         # add tqdm
         progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
+        self._progress_heartbeat("train_start")
 
         # we start from step 1
         self.global_steps += 1
@@ -1745,9 +1775,11 @@ class RayPPOTrainer:
                 )
 
                 is_last_step = self.global_steps >= self.total_training_steps
+                self._progress_heartbeat("step_start")
                 with marked_timer("step", timing_raw):
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
+                        self._progress_heartbeat("gen_start")
                         if not self.async_rollout_mode:
                             gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch_output)
                         else:
@@ -1755,6 +1787,7 @@ class RayPPOTrainer:
 
                         timing_raw.update(gen_batch_output.meta_info["timing"])
                         gen_batch_output.meta_info.pop("timing", None)
+                        self._progress_heartbeat("gen_done")
 
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         if self.reward_fn is None:
@@ -1814,6 +1847,7 @@ class RayPPOTrainer:
                         images_seqlens_all.extend(multi_modal_input["images_seqlens"].tolist())
                     batch.meta_info["images_seqlens"] = images_seqlens_all
                     with marked_timer("reward", timing_raw, color="yellow"):
+                        self._progress_heartbeat("reward_start")
                         # compute reward model score
                         if self.use_rm and "rm_scores" not in batch.batch.keys():
                             if not self.use_reward_loop:
@@ -1832,6 +1866,7 @@ class RayPPOTrainer:
                             reward_tensor, reward_extra_infos_dict = self._compute_or_extract_reward(
                                 batch, reward_fn=self.reward_fn, return_dict=False
                             )
+                        self._progress_heartbeat("reward_done")
 
                     # Operating Mode Selection:
                     # - Bypass mode: Sets old_log_probs = rollout_log_probs (2 policies: π_rollout, π_θ)
@@ -1849,6 +1884,7 @@ class RayPPOTrainer:
                         )
                     else:  # Recompute old_log_probs
                         with marked_timer("old_log_prob", timing_raw, color="blue"):
+                            self._progress_heartbeat("old_log_prob_start")
                             old_log_prob, old_log_prob_mfu = self._compute_old_log_prob(batch)
                             entropys = old_log_prob.batch["entropys"]
                             response_masks = batch.batch["response_mask"]
@@ -1871,14 +1907,17 @@ class RayPPOTrainer:
                                 from verl.utils.debug.metrics import calculate_debug_metrics
 
                                 metrics.update(calculate_debug_metrics(batch))
+                            self._progress_heartbeat("old_log_prob_done")
 
                     assert "old_log_probs" in batch.batch, f'"old_log_prob" not in {batch.batch.keys()=}'
 
                     if self.use_reference_policy:
                         # compute reference log_prob
                         with marked_timer(str(Role.RefPolicy), timing_raw, color="olive"):
+                            self._progress_heartbeat("ref_log_prob_start")
                             ref_log_prob = self._compute_ref_log_prob(batch)
                             batch = batch.union(ref_log_prob)
+                            self._progress_heartbeat("ref_log_prob_done")
 
                     # compute values
                     if self.use_critic:
@@ -1887,6 +1926,7 @@ class RayPPOTrainer:
                             batch = batch.union(values)
 
                     with marked_timer("adv", timing_raw, color="brown"):
+                        self._progress_heartbeat("adv_start")
                         # we combine with rule-based rm
                         reward_extra_infos_dict: dict[str, list]
                         if self.config.reward_model.launch_reward_fn_async:
@@ -1940,6 +1980,7 @@ class RayPPOTrainer:
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
                             config=self.config.algorithm,
                         )
+                        self._progress_heartbeat("adv_done")
 
                     # update critic
                     if self.use_critic:
@@ -1952,9 +1993,11 @@ class RayPPOTrainer:
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
                         with marked_timer("update_actor", timing_raw, color="red"):
+                            self._progress_heartbeat("actor_update_start")
                             actor_output = self._update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)
+                        self._progress_heartbeat("actor_update_done")
 
                     # Log rollout generations if enabled
                     rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
@@ -1968,9 +2011,11 @@ class RayPPOTrainer:
                     and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
                 ):
                     with marked_timer("testing", timing_raw, color="green"):
+                        self._progress_heartbeat("validation_start", validation="periodic")
                         val_metrics: dict = self._validate()
                         if is_last_step:
                             last_val_metrics = val_metrics
+                        self._progress_heartbeat("validation_done", validation="periodic")
                     metrics.update(val_metrics)
 
                 # Check if the ESI (Elastic Server Instance)/training plan is close to expiration.
@@ -2034,6 +2079,7 @@ class RayPPOTrainer:
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
+                self._progress_heartbeat("step_done")
 
                 progress_bar.update(1)
                 self.global_steps += 1

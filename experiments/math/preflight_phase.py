@@ -155,6 +155,28 @@ def main() -> None:
     ]:
         require_snippet(runner_path, runner, snippet)
 
+    trainer_path = "verl/trainer/ppo/ray_trainer.py"
+    trainer = Path(trainer_path).read_text(encoding="utf-8")
+    for snippet in [
+        "def _progress_heartbeat",
+        "VERL_FILE_LOGGER_ROOT",
+        ".progress.jsonl",
+        'self._progress_heartbeat("step_start")',
+        'self._progress_heartbeat("gen_start")',
+        'self._progress_heartbeat("actor_update_done")',
+    ]:
+        require_snippet(trainer_path, trainer, snippet)
+
+    watcher_path = "experiments/math/watch_phase_progress.py"
+    watcher = Path(watcher_path).read_text(encoding="utf-8")
+    for snippet in [
+        "def progress_path",
+        "waiting_for_progress",
+        "stage=",
+        "read_jsonl_from",
+    ]:
+        require_snippet(watcher_path, watcher, snippet)
+
     print("phase0_ok")
 
 

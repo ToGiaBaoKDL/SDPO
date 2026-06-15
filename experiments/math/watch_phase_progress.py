@@ -40,6 +40,10 @@ def metric_path(log_dir: Path, experiment_name: str) -> Path:
     return log_dir / "metrics" / "SDPO-Math" / f"{experiment_name}.jsonl"
 
 
+def progress_path(log_dir: Path, experiment_name: str) -> Path:
+    return log_dir / "metrics" / "SDPO-Math" / f"{experiment_name}.progress.jsonl"
+
+
 def compact_number(value: Any) -> str:
     if isinstance(value, bool):
         return str(int(value))
@@ -71,37 +75,79 @@ def progress_line(experiment_name: str, row: dict[str, Any], total_steps: int) -
     return " ".join(parts)
 
 
+def heartbeat_line(experiment_name: str, row: dict[str, Any], total_steps: int) -> str:
+    step = row.get("step", "?")
+    total = row.get("total_steps") or total_steps
+    if total and total > 0:
+        prefix = f"[progress] {experiment_name} step={step}/{total}"
+    else:
+        prefix = f"[progress] {experiment_name} step={step}"
+
+    parts = [prefix, f"stage={row.get('event', 'unknown')}"]
+    for key in ("validation",):
+        if key in row:
+            parts.append(f"{key}={row[key]}")
+    return " ".join(parts)
+
+
+def read_jsonl_from(path: Path, offset: int) -> tuple[list[dict[str, Any]], int]:
+    if not path.exists():
+        return [], offset
+
+    rows: list[dict[str, Any]] = []
+    with path.open("rb") as f:
+        f.seek(offset)
+        lines = f.readlines()
+        offset = f.tell()
+
+    for raw in lines:
+        if not raw.strip():
+            continue
+        try:
+            rows.append(json.loads(raw))
+        except json.JSONDecodeError:
+            continue
+    return rows, offset
+
+
 def main() -> None:
     args = parse_args()
-    path = metric_path(args.log_dir, args.experiment_name)
-    print(f"[progress] {args.experiment_name} waiting_for_metrics={path}", flush=True)
+    metrics_file = metric_path(args.log_dir, args.experiment_name)
+    progress_file = progress_path(args.log_dir, args.experiment_name)
+    print(
+        f"[progress] {args.experiment_name} waiting_for_progress={progress_file} "
+        f"waiting_for_metrics={metrics_file}",
+        flush=True,
+    )
 
-    offset = 0
+    metrics_offset = 0
+    progress_offset = 0
     last_printed_step: Any = None
+    last_printed_heartbeat: tuple[Any, Any, Any] | None = None
     last_activity = time.monotonic()
 
     while True:
-        if not path.exists():
+        progress_rows, progress_offset = read_jsonl_from(progress_file, progress_offset)
+        if progress_rows:
+            latest = progress_rows[-1]
+            heartbeat_key = (latest.get("step"), latest.get("event"), latest.get("validation"))
+            if heartbeat_key != last_printed_heartbeat:
+                print(heartbeat_line(args.experiment_name, latest, args.total_steps), flush=True)
+                last_printed_heartbeat = heartbeat_key
+                last_activity = time.monotonic()
+
+        if not metrics_file.exists():
             now = time.monotonic()
             if now - last_activity >= args.idle_interval:
-                print(f"[progress] {args.experiment_name} still_waiting_for_metrics", flush=True)
+                print(f"[progress] {args.experiment_name} still_waiting_for_progress_or_metrics", flush=True)
                 last_activity = now
             time.sleep(args.interval)
             continue
 
-        with path.open("rb") as f:
-            f.seek(offset)
-            lines = f.readlines()
-            offset = f.tell()
+        rows, metrics_offset = read_jsonl_from(metrics_file, metrics_offset)
 
         printed = False
-        for raw in lines:
-            if not raw.strip():
-                continue
-            try:
-                row = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
+        for row in rows:
             data = row.get("data", {})
             step = data.get("training/global_step", row.get("step"))
             if step == last_printed_step and "training/global_step" in data:
