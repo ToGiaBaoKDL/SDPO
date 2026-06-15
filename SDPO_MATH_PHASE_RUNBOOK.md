@@ -15,11 +15,11 @@ Do not copy Hydra override blocks into notebooks. If a training setting changes,
 
 Models:
 
-| Phase | Model | Profile |
-|---|---|---|
-| Pilot | `Qwen/Qwen3-1.7B` | `fast` |
-| Scale decision | `Qwen/Qwen3-4B` | `fast`, compute-bounded |
-| Thesis | `Qwen/Qwen3-8B` | `balanced`, compute-bounded |
+| Phase | Model | Profile | Rollout TP |
+|---|---|---|---:|
+| Pilot | `Qwen/Qwen3-1.7B` | `fast` | 2 |
+| Scale decision | `Qwen/Qwen3-4B` | `fast`, compute-bounded | 1 |
+| Thesis | `Qwen/Qwen3-8B` | `balanced`, compute-bounded | 1 |
 
 Default phase variants:
 
@@ -31,20 +31,20 @@ Default phase variants:
 
 Profile settings are selected by `HARDWARE_PROFILE`:
 
-| Hardware | Profile | Train batch | Rollout n | Workers | Response | Model len | vLLM util |
-|---|---|---:|---:|---:|---:|---:|---:|
-| A100-80GB | `fast` | 32 | 2 | 32 | 1024 | 3072 | 0.86 |
-| A100-80GB | `balanced` | 32 | 2 | 32 | 1536 | 4096 | 0.80 |
-| A100-80GB | `quality` | 32 | 2 | 32 | 2048 | 6144 | 0.76 |
-| H100 | `fast` | 32 | 2 | 32 | 1024 | 3072 | 0.92 |
-| H100 | `balanced` | 32 | 2 | 32 | 1536 | 4096 | 0.93 |
-| H100 | `quality` | 32 | 2 | 32 | 2048 | 6144 | 0.93 |
+| Hardware | Profile | Train batch | Rollout n | Workers | Response | Model len | Max seqs | vLLM util |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| A100-80GB | `fast` | 32 | 2 | 32 | 1024 | 3072 | 64 | 0.86 |
+| A100-80GB | `balanced` | 32 | 2 | 32 | 1536 | 4096 | 64 | 0.80 |
+| A100-80GB | `quality` | 32 | 2 | 32 | 2048 | 6144 | 64 | 0.76 |
+| H100 | `fast` | 32 | 2 | 32 | 1024 | 3072 | 64 | 0.92 |
+| H100 | `balanced` | 32 | 2 | 32 | 1536 | 4096 | 64 | 0.93 |
+| H100 | `quality` | 32 | 2 | 32 | 2048 | 6144 | 64 | 0.93 |
 
-Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. The public profiles use two rollouts per prompt to preserve SDPO sibling comparison while cutting rollout cost. A100 defaults reserve enough vLLM memory for hybrid training to start reliably. If memory is stable and you want to push throughput, rerun with a higher `GPU_UTIL`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
+Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, `actor_rollout_ref.rollout.max_num_seqs=64`, and `actor_rollout_ref.rollout.enforce_eager=True`. The public profiles use two rollouts per prompt to preserve SDPO sibling comparison while cutting rollout cost. `max_num_seqs=64` avoids the vLLM default 1024-request sampler warmup that can OOM during engine startup. Phase 2 and Thesis use `ROLLOUT_TP=1` to launch one vLLM replica per GPU on 2x A100/H100. If memory is stable and you want to test higher throughput later, run a short pilot with `ENFORCE_EAGER=False`; keep eager mode for deadline runs unless CUDA graph mode is empirically faster end to end.
 
 `sdpo_reliability_gate` uses `RELIABILITY_GATE_THRESHOLD=0.4` by default. This keeps successful demonstrations and safe wrong-answer feedback while skipping lower-reliability teacher-forward targets such as format-only feedback and truncated/no-target samples.
 
-FP8 rollout is opt-in with `ROLLOUT_QUANTIZATION=fp8`. Keep the thesis default at `null` on A100 unless a short pilot shows equal validation accuracy, because rollout quantization changes the sampled trajectories. On H100, FP8 is more plausible as a speed ablation; still report it separately from the BF16 run.
+FP8 rollout is opt-in only for pilot smoke tests. Phase 2 and Thesis force rollout quantization to `null` in the runner, because quantized rollouts change the sampled trajectories and should not be mixed into the core comparison.
 
 Minimal FP8 rollout smoke:
 
@@ -63,7 +63,7 @@ bash experiments/math/run_sdpo_math_benchmark.sh
 
 When `ULTRA_QUIET=1`, Ray worker logs are hidden but a compact progress watcher remains enabled. It prints heartbeat stages while a step is running, for example `step=12/50 stage=gen_start`, and metric summaries when a step finishes, for example `step=12/50 reward=... tok_s=...`. Set `PROGRESS_WATCH=0` to disable it or `PROGRESS_INTERVAL=30` to print less often. On trainer failure, the runner prints the variant log tail plus recent Ray/vLLM error blocks; set `FAILURE_CONTEXT=0` only if you want to suppress that diagnostic output.
 
-Startup can still be slow before step 1 because each variant initializes Ray workers, FSDP, LoRA, and a vLLM engine for the selected model. The progress watcher reports these as `ray_init_start`, `task_start`, `checkpoint_local_start`, `dataset_start`, `init_workers_start`, and `fit_start`. If a short Phase 2 run spends too much time in vLLM CUDA graph capture, you may test `ENFORCE_EAGER=True`; this can reduce startup time but usually lowers generation throughput, so keep `ENFORCE_EAGER=False` for final thesis runs unless eager mode is empirically faster end to end.
+Startup can still be slow before step 1 because each variant initializes Ray workers, FSDP, LoRA, and a vLLM engine for the selected model. The progress watcher reports these as `ray_init_start`, `task_start`, `checkpoint_local_start`, `dataset_start`, `init_workers_start`, and `fit_start`. With the default `ENFORCE_EAGER=True`, vLLM skips CUDA graph capture and usually reaches train steps sooner. If startup is stable and you want a throughput ablation, test `ENFORCE_EAGER=False` on one short run before using it for a longer phase.
 
 ## Setup
 
@@ -103,7 +103,10 @@ echo "== Phase 0: preflight =="
 cd /root/SDPO
 source experiments/math/math_env.sh
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
-export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
+unset GPU_UTIL ROLLOUT_QUANTIZATION
+export MAX_NUM_SEQS=64
+export ROLLOUT_TP=2
+export ENFORCE_EAGER=True
 
 ray stop --force >/dev/null 2>&1 || true
 bash experiments/math/run_sdpo_math_live_preflight.sh
@@ -138,7 +141,10 @@ source experiments/math/math_env.sh
 
 export PHASE=pilot
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
-export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
+unset GPU_UTIL ROLLOUT_QUANTIZATION
+export MAX_NUM_SEQS=64
+export ROLLOUT_TP=2
+export ENFORCE_EAGER=True
 export TRAIN_STEPS="${TRAIN_STEPS:-10}"
 export ULTRA_QUIET="${ULTRA_QUIET:-0}"
 
@@ -157,7 +163,10 @@ source experiments/math/math_env.sh
 
 export PHASE=scale_decision
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
-export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
+unset GPU_UTIL
+export MAX_NUM_SEQS=64
+export ROLLOUT_TP=1
+export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-12}"
 export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-512}"
@@ -202,7 +211,10 @@ source experiments/math/math_env.sh
 
 export PHASE=thesis
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
-export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
+unset GPU_UTIL
+export MAX_NUM_SEQS=64
+export ROLLOUT_TP=1
+export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-32}"
 export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"

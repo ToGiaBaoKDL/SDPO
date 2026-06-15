@@ -38,6 +38,7 @@ def main() -> None:
         "train_batch_size": cfg["data"]["train_batch_size"],
         "agent_workers": cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"],
         "max_num_batched_tokens": cfg["actor_rollout_ref"]["rollout"]["max_num_batched_tokens"],
+        "max_num_seqs": cfg["actor_rollout_ref"]["rollout"]["max_num_seqs"],
         "enforce_eager": cfg["actor_rollout_ref"]["rollout"]["enforce_eager"],
         "use_remove_padding": cfg["actor_rollout_ref"]["model"]["use_remove_padding"],
         "dataloader_workers": cfg["data"]["dataloader_num_workers"],
@@ -54,6 +55,7 @@ def main() -> None:
     assert "val_batch_size" not in cfg["data"]
     assert checks["agent_workers"] == 32
     assert checks["max_num_batched_tokens"] == 49152
+    assert checks["max_num_seqs"] == 64
     assert checks["enforce_eager"] is True
     assert checks["use_remove_padding"] is False
     assert checks["dataloader_workers"] == 0
@@ -83,11 +85,15 @@ def main() -> None:
         "BATCHED_TOKENS=32768",
         "BATCHED_TOKENS=49152",
         "BATCHED_TOKENS=65536",
+        'MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"',
+        'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
         'GPU_UTIL="${GPU_UTIL:-0.86}"',
         'GPU_UTIL="${GPU_UTIL:-0.80}"',
         'GPU_UTIL="${GPU_UTIL:-0.76}"',
-        "ENFORCE_EAGER",
+        'ENFORCE_EAGER="${ENFORCE_EAGER:-True}"',
         "effective_rollouts",
+        'actor_rollout_ref.rollout.tensor_model_parallel_size="${ROLLOUT_TP}"',
+        'actor_rollout_ref.rollout.max_num_seqs="${MAX_NUM_SEQS}"',
         'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
         'actor_rollout_ref.rollout.quantization="${ROLLOUT_QUANTIZATION:-null}"',
         "actor_rollout_ref.rollout.val_kwargs.n=1",
@@ -150,6 +156,8 @@ def main() -> None:
         'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
         'TRAIN_STEPS="${TRAIN_STEPS:-32}"',
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
+        "ROLLOUT_TP=1",
+        "ROLLOUT_QUANTIZATION=null",
         'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
         'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
         "Refusing CONFIG_NAME",
@@ -172,6 +180,8 @@ def main() -> None:
         "sdpo_reliability_gate",
         "RELIABILITY_GATE_THRESHOLD",
         "ROLLOUT_QUANTIZATION",
+        "ROLLOUT_TP",
+        "MAX_NUM_SEQS",
     ]:
         require_snippet(manifest_path, manifest, snippet)
 

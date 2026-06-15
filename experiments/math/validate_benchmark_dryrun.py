@@ -67,43 +67,49 @@ PROFILE_EXPECTATIONS = {
         "train_batch_size": 32,
         "agent_workers": 32,
         "base_model_train_max_samples": 64,
+        "max_num_seqs": 64,
         "gpu_util": "0.86",
-        "enforce_eager": "False",
+        "enforce_eager": "True",
     },
     ("a100", "balanced"): {
         "train_batch_size": 32,
         "agent_workers": 32,
         "base_model_train_max_samples": 64,
+        "max_num_seqs": 64,
         "gpu_util": "0.80",
-        "enforce_eager": "False",
+        "enforce_eager": "True",
     },
     ("a100", "quality"): {
         "train_batch_size": 32,
         "agent_workers": 32,
         "base_model_train_max_samples": 64,
+        "max_num_seqs": 64,
         "gpu_util": "0.76",
-        "enforce_eager": "False",
+        "enforce_eager": "True",
     },
     ("h100", "fast"): {
         "train_batch_size": 32,
         "agent_workers": 32,
         "base_model_train_max_samples": 64,
+        "max_num_seqs": 64,
         "gpu_util": "0.92",
-        "enforce_eager": "False",
+        "enforce_eager": "True",
     },
     ("h100", "balanced"): {
         "train_batch_size": 32,
         "agent_workers": 32,
         "base_model_train_max_samples": 64,
+        "max_num_seqs": 64,
         "gpu_util": "0.93",
-        "enforce_eager": "False",
+        "enforce_eager": "True",
     },
     ("h100", "quality"): {
         "train_batch_size": 32,
         "agent_workers": 32,
         "base_model_train_max_samples": 64,
+        "max_num_seqs": 64,
         "gpu_util": "0.93",
-        "enforce_eager": "False",
+        "enforce_eager": "True",
     },
 }
 
@@ -151,6 +157,13 @@ def manifest_rollout_quantization(manifest: dict | None) -> str:
     return str(profile_settings.get("rollout_quantization") or "null")
 
 
+def manifest_rollout_tp(manifest: dict | None, phase: str) -> str:
+    if manifest is None:
+        return "1" if phase in {"scale_decision", "thesis"} else "2"
+    profile_settings = manifest.get("profile_settings") or {}
+    return str(profile_settings.get("rollout_tp") or ("1" if phase in {"scale_decision", "thesis"} else "2"))
+
+
 def expected_snippets(
     hardware_profile: str,
     profile: str,
@@ -158,6 +171,7 @@ def expected_snippets(
     reliability_gate_threshold: str,
     model: str,
     train_steps: str,
+    rollout_tp: str,
     rollout_quantization: str,
 ) -> dict[str, list[str]]:
     settings = PROFILE_EXPECTATIONS.get((hardware_profile, profile))
@@ -185,7 +199,9 @@ def expected_snippets(
         result["base_model"].append(f"data.train_max_samples={settings['base_model_train_max_samples']}")
     for snippets in result.values():
         snippets.append(f"data.train_batch_size={settings['train_batch_size']}")
+        snippets.append(f"actor_rollout_ref.rollout.tensor_model_parallel_size={rollout_tp}")
         snippets.append(f"actor_rollout_ref.rollout.agent.num_workers={settings['agent_workers']}")
+        snippets.append(f"actor_rollout_ref.rollout.max_num_seqs={settings['max_num_seqs']}")
         snippets.append(f"actor_rollout_ref.rollout.gpu_memory_utilization={settings['gpu_util']}")
         snippets.append(f"actor_rollout_ref.rollout.enforce_eager={settings['enforce_eager']}")
         snippets.append(f"actor_rollout_ref.rollout.quantization={rollout_quantization}")
@@ -213,6 +229,7 @@ def main() -> None:
     reliability_gate_threshold = manifest_gate_threshold(manifest)
     model = manifest_model(manifest)
     train_steps = manifest_train_steps(manifest, args.steps)
+    rollout_tp = manifest_rollout_tp(manifest, args.phase)
     rollout_quantization = manifest_rollout_quantization(manifest)
 
     for variant, snippets in expected_snippets(
@@ -222,6 +239,7 @@ def main() -> None:
         reliability_gate_threshold,
         model,
         train_steps,
+        rollout_tp,
         rollout_quantization,
     ).items():
         path = args.log_dir / f"{variant}_{exp_suffix}.log"
