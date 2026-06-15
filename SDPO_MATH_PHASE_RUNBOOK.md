@@ -136,13 +136,21 @@ source experiments/math/math_env.sh
 export PHASE=scale_decision
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
+export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability}"
 export TRAIN_STEPS="${TRAIN_STEPS:-50}"
+export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-2048}"
+export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
+export EVAL_FREQ="${EVAL_FREQ:-50}"
+export SAVE_FREQ="${SAVE_FREQ:--1}"
+export VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
+export VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-0}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
+export PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-60}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
 
-Move to thesis only if all variants finish, SDPO logs reprompt and feedback-used metrics, and `sdpo_reliability` logs reliability weights without reward collapse.
+This Phase 2 command skips `base_model` after the baseline has already been measured, keeps the compact progress tracker visible under `ULTRA_QUIET=1`, and evaluates only at the final step. Move to thesis only if all trained variants finish, SDPO logs reprompt and feedback-used metrics, and `sdpo_reliability` logs reliability weights without reward collapse.
 
 ## Phase 3: Inspect
 
