@@ -61,7 +61,7 @@ case "${PHASE}" in
     EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
     SAVE_FREQ="${SAVE_FREQ:--1}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
-    ROLLOUT_TP=1
+    ROLLOUT_TP=2
     ROLLOUT_QUANTIZATION=null
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-Decision}"
     ;;
@@ -74,7 +74,7 @@ case "${PHASE}" in
     EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
     SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
-    ROLLOUT_TP=1
+    ROLLOUT_TP=2
     ROLLOUT_QUANTIZATION=null
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Thesis}"
     ;;

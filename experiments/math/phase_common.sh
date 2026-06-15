@@ -20,7 +20,7 @@ sdpo_math_configure_profile() {
     a100:fast)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS=32
+      AGENT_WORKERS="${AGENT_WORKERS:-32}"
       RESPONSE_LEN=1024
       MODEL_LEN=3072
       ACTOR_LEN=4096
@@ -33,7 +33,7 @@ sdpo_math_configure_profile() {
     a100:balanced)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS=32
+      AGENT_WORKERS="${AGENT_WORKERS:-32}"
       RESPONSE_LEN=1536
       MODEL_LEN=4096
       ACTOR_LEN=6144
@@ -46,7 +46,7 @@ sdpo_math_configure_profile() {
     a100:quality)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS=32
+      AGENT_WORKERS="${AGENT_WORKERS:-32}"
       RESPONSE_LEN=2048
       MODEL_LEN=6144
       ACTOR_LEN=8192
@@ -59,7 +59,7 @@ sdpo_math_configure_profile() {
     h100:fast)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS=32
+      AGENT_WORKERS="${AGENT_WORKERS:-32}"
       RESPONSE_LEN=1024
       MODEL_LEN=3072
       ACTOR_LEN=4096
@@ -72,7 +72,7 @@ sdpo_math_configure_profile() {
     h100:balanced)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS=32
+      AGENT_WORKERS="${AGENT_WORKERS:-32}"
       RESPONSE_LEN=1536
       MODEL_LEN=4096
       ACTOR_LEN=6144
@@ -85,7 +85,7 @@ sdpo_math_configure_profile() {
     h100:quality)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS=32
+      AGENT_WORKERS="${AGENT_WORKERS:-32}"
       RESPONSE_LEN=2048
       MODEL_LEN=6144
       ACTOR_LEN=8192

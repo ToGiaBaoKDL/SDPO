@@ -49,7 +49,7 @@ for snippet in [
     'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
     'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
     'RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"',
-    "ROLLOUT_TP=1",
+    "ROLLOUT_TP=2",
     "ROLLOUT_QUANTIZATION=null",
     'actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}"',
 ]:
@@ -91,9 +91,19 @@ for snippet in [
     "def progress_path",
     "waiting_for_progress",
     "stage=",
+    '"timing_s/gen": "gen_s"',
+    '"timing_s/old_log_prob": "oldlp_s"',
     "read_jsonl_from",
 ]:
     assert snippet in watcher, f"watcher missing progress heartbeat support: {snippet}"
+
+summary = Path("experiments/math/summarize_phase_results.py").read_text(encoding="utf-8")
+for snippet in [
+    "time_per_step_s",
+    "old_log_prob_s",
+    'data.get("timing_s/update_actor", "")',
+]:
+    assert snippet in summary, f"summary missing timing field: {snippet}"
 
 phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-8")
 assert "+ray_kwargs.ray_init.log_to_driver=False" in phase_common
@@ -109,7 +119,7 @@ for snippet in [
     "TRAIN_BS=32",
     "ROLLOUT_N=2",
     'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
-    "AGENT_WORKERS=32",
+    'AGENT_WORKERS="${AGENT_WORKERS:-32}"',
     'MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"',
     'actor_rollout_ref.rollout.tensor_model_parallel_size="${ROLLOUT_TP}"',
     'ENFORCE_EAGER="${ENFORCE_EAGER:-True}"',

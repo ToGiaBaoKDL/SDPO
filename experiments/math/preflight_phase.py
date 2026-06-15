@@ -78,7 +78,7 @@ def main() -> None:
         "h100:quality)",
         "TRAIN_BS=32",
         "ROLLOUT_N=2",
-        "AGENT_WORKERS=32",
+        'AGENT_WORKERS="${AGENT_WORKERS:-32}"',
         "RESPONSE_LEN=1024",
         "RESPONSE_LEN=1536",
         "RESPONSE_LEN=2048",
@@ -156,7 +156,7 @@ def main() -> None:
         'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
         'TRAIN_STEPS="${TRAIN_STEPS:-32}"',
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
-        "ROLLOUT_TP=1",
+        "ROLLOUT_TP=2",
         "ROLLOUT_QUANTIZATION=null",
         'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
         'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
@@ -223,9 +223,20 @@ def main() -> None:
         "def progress_path",
         "waiting_for_progress",
         "stage=",
+        '"timing_s/gen": "gen_s"',
+        '"timing_s/old_log_prob": "oldlp_s"',
         "read_jsonl_from",
     ]:
         require_snippet(watcher_path, watcher, snippet)
+
+    summary_path = "experiments/math/summarize_phase_results.py"
+    summary = Path(summary_path).read_text(encoding="utf-8")
+    for snippet in [
+        "time_per_step_s",
+        "old_log_prob_s",
+        'data.get("timing_s/update_actor", "")',
+    ]:
+        require_snippet(summary_path, summary, snippet)
 
     print("phase0_ok")
 

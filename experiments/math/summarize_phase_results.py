@@ -32,6 +32,11 @@ SUMMARY_COLUMNS = [
     "actor_pg_loss",
     "actor_grad_norm",
     "throughput_tokens_per_s",
+    "time_per_step_s",
+    "gen_s",
+    "old_log_prob_s",
+    "update_actor_s",
+    "adv_s",
     "metric_file",
 ]
 
@@ -157,6 +162,11 @@ def summarize_metric_file(path: Path) -> dict[str, Any]:
         "actor_pg_loss": data.get("actor/pg_loss", ""),
         "actor_grad_norm": data.get("actor/grad_norm", ""),
         "throughput_tokens_per_s": data.get("perf/throughput", ""),
+        "time_per_step_s": data.get("perf/time_per_step", ""),
+        "gen_s": data.get("timing_s/gen", ""),
+        "old_log_prob_s": data.get("timing_s/old_log_prob", ""),
+        "update_actor_s": data.get("timing_s/update_actor", ""),
+        "adv_s": data.get("timing_s/adv", ""),
         "metric_file": str(path),
     }
 
@@ -185,6 +195,11 @@ def summarize_console_log(path: Path) -> dict[str, Any]:
         "actor_pg_loss": data.get("actor/pg_loss", ""),
         "actor_grad_norm": data.get("actor/grad_norm", ""),
         "throughput_tokens_per_s": data.get("perf/throughput", ""),
+        "time_per_step_s": data.get("perf/time_per_step", ""),
+        "gen_s": data.get("timing_s/gen", ""),
+        "old_log_prob_s": data.get("timing_s/old_log_prob", ""),
+        "update_actor_s": data.get("timing_s/update_actor", ""),
+        "adv_s": data.get("timing_s/adv", ""),
         "metric_file": str(path),
     }
 

@@ -24,7 +24,12 @@ PROGRESS_KEYS = {
     "self_distillation/reliability_gate_target_fraction": "gate",
     "actor/pg_loss": "pg_loss",
     "actor/grad_norm": "grad",
+    "perf/time_per_step": "step_s",
     "perf/throughput": "tok_s",
+    "timing_s/gen": "gen_s",
+    "timing_s/old_log_prob": "oldlp_s",
+    "timing_s/update_actor": "upd_s",
+    "timing_s/adv": "adv_s",
 }
 
 

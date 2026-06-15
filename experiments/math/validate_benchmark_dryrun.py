@@ -159,9 +159,16 @@ def manifest_rollout_quantization(manifest: dict | None) -> str:
 
 def manifest_rollout_tp(manifest: dict | None, phase: str) -> str:
     if manifest is None:
-        return "1" if phase in {"scale_decision", "thesis"} else "2"
+        return "2"
     profile_settings = manifest.get("profile_settings") or {}
-    return str(profile_settings.get("rollout_tp") or ("1" if phase in {"scale_decision", "thesis"} else "2"))
+    return str(profile_settings.get("rollout_tp") or "2")
+
+
+def manifest_agent_workers(manifest: dict | None, fallback: int) -> str:
+    if manifest is None:
+        return str(fallback)
+    profile_settings = manifest.get("profile_settings") or {}
+    return str(profile_settings.get("agent_workers") or fallback)
 
 
 def expected_snippets(
@@ -172,6 +179,7 @@ def expected_snippets(
     model: str,
     train_steps: str,
     rollout_tp: str,
+    agent_workers: str,
     rollout_quantization: str,
 ) -> dict[str, list[str]]:
     settings = PROFILE_EXPECTATIONS.get((hardware_profile, profile))
@@ -200,7 +208,7 @@ def expected_snippets(
     for snippets in result.values():
         snippets.append(f"data.train_batch_size={settings['train_batch_size']}")
         snippets.append(f"actor_rollout_ref.rollout.tensor_model_parallel_size={rollout_tp}")
-        snippets.append(f"actor_rollout_ref.rollout.agent.num_workers={settings['agent_workers']}")
+        snippets.append(f"actor_rollout_ref.rollout.agent.num_workers={agent_workers}")
         snippets.append(f"actor_rollout_ref.rollout.max_num_seqs={settings['max_num_seqs']}")
         snippets.append(f"actor_rollout_ref.rollout.gpu_memory_utilization={settings['gpu_util']}")
         snippets.append(f"actor_rollout_ref.rollout.enforce_eager={settings['enforce_eager']}")
@@ -230,6 +238,14 @@ def main() -> None:
     model = manifest_model(manifest)
     train_steps = manifest_train_steps(manifest, args.steps)
     rollout_tp = manifest_rollout_tp(manifest, args.phase)
+    settings = PROFILE_EXPECTATIONS.get((args.hardware_profile, args.profile))
+    if settings is None:
+        raise AssertionError(
+            "validate_benchmark_dryrun.py does not know "
+            f"hardware_profile={args.hardware_profile} profile={args.profile}. "
+            f"Known combinations: {sorted(PROFILE_EXPECTATIONS)}"
+        )
+    agent_workers = manifest_agent_workers(manifest, settings["agent_workers"])
     rollout_quantization = manifest_rollout_quantization(manifest)
 
     for variant, snippets in expected_snippets(
@@ -240,6 +256,7 @@ def main() -> None:
         model,
         train_steps,
         rollout_tp,
+        agent_workers,
         rollout_quantization,
     ).items():
         path = args.log_dir / f"{variant}_{exp_suffix}.log"
