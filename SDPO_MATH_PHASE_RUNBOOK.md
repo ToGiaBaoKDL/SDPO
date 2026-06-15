@@ -35,13 +35,13 @@ Profile settings are selected by `HARDWARE_PROFILE`:
 | Hardware | Profile | Train batch | Rollout n | Workers | Response | Model len | vLLM util |
 |---|---|---:|---:|---:|---:|---:|---:|
 | A100-80GB | `fast` | 64 | 4 | 128 | 1536 | 5120 | 0.86 |
-| A100-80GB | `balanced` | 64 | 4 | 128 | 2048 | 6144 | 0.78 |
-| A100-80GB | `quality` | 48 | 4 | 96 | 3072 | 8192 | 0.74 |
+| A100-80GB | `balanced` | 64 | 4 | 64 | 2048 | 6144 | 0.78 |
+| A100-80GB | `quality` | 48 | 4 | 48 | 3072 | 8192 | 0.74 |
 | H100 | `fast` | 64 | 4 | 128 | 1536 | 5120 | 0.92 |
-| H100 | `balanced` | 64 | 4 | 128 | 2048 | 6144 | 0.93 |
-| H100 | `quality` | 48 | 4 | 96 | 3072 | 8192 | 0.93 |
+| H100 | `balanced` | 64 | 4 | 64 | 2048 | 6144 | 0.93 |
+| H100 | `quality` | 48 | 4 | 48 | 3072 | 8192 | 0.93 |
 
-Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. A100 defaults reserve less vLLM memory for larger models so the hybrid trainer can start reliably. If memory is stable and you want to push throughput, rerun with a higher `GPU_UTIL`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
+Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. Phase 2 and Phase 4 use fewer agent workers than rollouts to reduce Ray scheduling overhead while keeping the same effective rollout batch. A100 defaults reserve less vLLM memory for larger models so the hybrid trainer can start reliably. If memory is stable and you want to push throughput, rerun with a higher `GPU_UTIL`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
 
 When `ULTRA_QUIET=1`, Ray worker logs are hidden but a compact progress watcher remains enabled. It prints lines like `[progress] sdpo_reliability... step=12/50 reward=... tok_s=...` from the structured file logger. Set `PROGRESS_WATCH=0` to disable it or `PROGRESS_INTERVAL=30` to print less often. On trainer failure, the runner prints the variant log tail plus recent Ray/vLLM error blocks; set `FAILURE_CONTEXT=0` only if you want to suppress that diagnostic output.
 
@@ -177,6 +177,7 @@ export TRAIN_STEPS="${TRAIN_STEPS:-300}"
 export EVAL_FREQ="${EVAL_FREQ:-100}"
 export SAVE_FREQ="${SAVE_FREQ:-100}"
 export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-512}"
+export VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
 
@@ -213,7 +214,7 @@ cat "$LOG_DIR/summary.md"
 
 ## Report Notes
 
-Primary metric: `val-core/math_dapo/acc/mean@1`.
+Primary metric: `val-core/math_dapo/acc/mean@1`. The `base_model` variant provides the untrained baseline, so Phase 4 defaults to `VAL_BEFORE_TRAIN=False` for trained variants to avoid repeated initial validations.
 
 Report reward, incorrect format rate, truncation rate, SDPO reprompt fraction, feedback-used fraction, reliability weight mean, throughput, seed, profile, model, hardware profile, git commit, validation dumps, and checkpoint paths.
 

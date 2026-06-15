@@ -32,7 +32,7 @@ sdpo_math_configure_profile() {
     a100:balanced)
       TRAIN_BS=64
       ROLLOUT_N=4
-      AGENT_WORKERS=128
+      AGENT_WORKERS=64
       RESPONSE_LEN=2048
       MODEL_LEN=6144
       ACTOR_LEN=8192
@@ -44,7 +44,7 @@ sdpo_math_configure_profile() {
     a100:quality)
       TRAIN_BS=48
       ROLLOUT_N=4
-      AGENT_WORKERS=96
+      AGENT_WORKERS=48
       RESPONSE_LEN=3072
       MODEL_LEN=8192
       ACTOR_LEN=10240
@@ -68,7 +68,7 @@ sdpo_math_configure_profile() {
     h100:balanced)
       TRAIN_BS=64
       ROLLOUT_N=4
-      AGENT_WORKERS=128
+      AGENT_WORKERS=64
       RESPONSE_LEN=2048
       MODEL_LEN=6144
       ACTOR_LEN=8192
@@ -80,7 +80,7 @@ sdpo_math_configure_profile() {
     h100:quality)
       TRAIN_BS=48
       ROLLOUT_N=4
-      AGENT_WORKERS=96
+      AGENT_WORKERS=48
       RESPONSE_LEN=3072
       MODEL_LEN=8192
       ACTOR_LEN=10240
