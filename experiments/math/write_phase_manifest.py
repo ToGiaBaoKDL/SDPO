@@ -70,6 +70,7 @@ def main() -> None:
                 "BATCHED_TOKENS",
                 "GPU_UTIL",
                 "ENFORCE_EAGER",
+                "ROLLOUT_QUANTIZATION",
             ]
         },
         "config_name": args.config_name,

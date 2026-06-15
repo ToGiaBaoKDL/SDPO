@@ -151,6 +151,7 @@ sdpo_math_build_common_overrides() {
     actor_rollout_ref.rollout.max_num_batched_tokens="${BATCHED_TOKENS}"
     actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"
     actor_rollout_ref.rollout.gpu_memory_utilization="${GPU_UTIL}"
+    actor_rollout_ref.rollout.quantization="${ROLLOUT_QUANTIZATION:-null}"
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu="${MODEL_LEN}"
     actor_rollout_ref.rollout.val_kwargs.n=1
     actor_rollout_ref.rollout.val_kwargs.do_sample=False
@@ -170,5 +171,5 @@ sdpo_math_prepare_phase_run() {
   sdpo_math_init_logging "${log_dir}"
   sdpo_math_build_common_overrides
 
-  echo "hardware=${HARDWARE_PROFILE:-a100} profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} gpu_util=${GPU_UTIL} enforce_eager=${ENFORCE_EAGER}"
+  echo "hardware=${HARDWARE_PROFILE:-a100} profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} gpu_util=${GPU_UTIL} enforce_eager=${ENFORCE_EAGER} rollout_quantization=${ROLLOUT_QUANTIZATION:-null}"
 }

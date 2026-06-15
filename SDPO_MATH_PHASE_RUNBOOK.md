@@ -44,6 +44,23 @@ Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_
 
 `sdpo_reliability_gate` uses `RELIABILITY_GATE_THRESHOLD=0.4` by default. This keeps successful demonstrations and safe wrong-answer feedback while skipping lower-reliability teacher-forward targets such as format-only feedback and truncated/no-target samples.
 
+FP8 rollout is opt-in with `ROLLOUT_QUANTIZATION=fp8`. Keep the thesis default at `null` on A100 unless a short pilot shows equal validation accuracy, because rollout quantization changes the sampled trajectories. On H100, FP8 is more plausible as a speed ablation; still report it separately from the BF16 run.
+
+Minimal FP8 rollout smoke:
+
+%%bash
+set -euo pipefail
+cd /root/SDPO
+source experiments/math/math_env.sh
+export PHASE=pilot
+export VARIANTS="sdpo_vanilla"
+export TRAIN_STEPS=1
+export TRAIN_MAX_SAMPLES=64
+export VAL_MAX_SAMPLES=16
+export ROLLOUT_QUANTIZATION=fp8
+export VERIFY_PHASE_MODEL=0
+bash experiments/math/run_sdpo_math_benchmark.sh
+
 When `ULTRA_QUIET=1`, Ray worker logs are hidden but a compact progress watcher remains enabled. It prints heartbeat stages while a step is running, for example `step=12/50 stage=gen_start`, and metric summaries when a step finishes, for example `step=12/50 reward=... tok_s=...`. Set `PROGRESS_WATCH=0` to disable it or `PROGRESS_INTERVAL=30` to print less often. On trainer failure, the runner prints the variant log tail plus recent Ray/vLLM error blocks; set `FAILURE_CONTEXT=0` only if you want to suppress that diagnostic output.
 
 Startup can still be slow before step 1 because each variant initializes Ray workers, FSDP, LoRA, and a vLLM engine for the selected model. The progress watcher reports these as `ray_init_start`, `task_start`, `checkpoint_local_start`, `dataset_start`, `init_workers_start`, and `fit_start`. If a short Phase 2 run spends too much time in vLLM CUDA graph capture, you may test `ENFORCE_EAGER=True`; this can reduce startup time but usually lowers generation throughput, so keep `ENFORCE_EAGER=False` for final thesis runs unless eager mode is empirically faster end to end.
@@ -205,6 +222,8 @@ For a stronger thesis run, place these overrides inside the Phase 4 cell before 
 - `export VAL_MAX_SAMPLES=512`
 - `export EVAL_FREQ=64`
 - `export SAVE_FREQ=64`
+
+Deadline alternative: use Qwen3-4B for the thesis phase by adding `export THESIS_MODEL_PATH=Qwen/Qwen3-4B` before sourcing `math_env.sh`. This is faster and still valid for a method comparison, but report it as a 4B experiment rather than claiming 8B absolute quality.
 
 ## Phase 5: Report Check
 

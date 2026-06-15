@@ -144,6 +144,13 @@ def manifest_train_steps(manifest: dict | None, fallback: str) -> str:
     return str(manifest.get("train_steps", fallback))
 
 
+def manifest_rollout_quantization(manifest: dict | None) -> str:
+    if manifest is None:
+        return "null"
+    profile_settings = manifest.get("profile_settings") or {}
+    return str(profile_settings.get("rollout_quantization") or "null")
+
+
 def expected_snippets(
     hardware_profile: str,
     profile: str,
@@ -151,6 +158,7 @@ def expected_snippets(
     reliability_gate_threshold: str,
     model: str,
     train_steps: str,
+    rollout_quantization: str,
 ) -> dict[str, list[str]]:
     settings = PROFILE_EXPECTATIONS.get((hardware_profile, profile))
     if settings is None:
@@ -180,6 +188,7 @@ def expected_snippets(
         snippets.append(f"actor_rollout_ref.rollout.agent.num_workers={settings['agent_workers']}")
         snippets.append(f"actor_rollout_ref.rollout.gpu_memory_utilization={settings['gpu_util']}")
         snippets.append(f"actor_rollout_ref.rollout.enforce_eager={settings['enforce_eager']}")
+        snippets.append(f"actor_rollout_ref.rollout.quantization={rollout_quantization}")
     return result
 
 
@@ -204,6 +213,7 @@ def main() -> None:
     reliability_gate_threshold = manifest_gate_threshold(manifest)
     model = manifest_model(manifest)
     train_steps = manifest_train_steps(manifest, args.steps)
+    rollout_quantization = manifest_rollout_quantization(manifest)
 
     for variant, snippets in expected_snippets(
         args.hardware_profile,
@@ -212,6 +222,7 @@ def main() -> None:
         reliability_gate_threshold,
         model,
         train_steps,
+        rollout_quantization,
     ).items():
         path = args.log_dir / f"{variant}_{exp_suffix}.log"
         if not path.exists():

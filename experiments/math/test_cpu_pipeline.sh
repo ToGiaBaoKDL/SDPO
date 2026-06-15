@@ -58,6 +58,7 @@ for snippet in [
     "variant_hyperparameters",
     "sdpo_reliability_gate",
     "RELIABILITY_GATE_THRESHOLD",
+    "ROLLOUT_QUANTIZATION",
 ]:
     assert snippet in manifest, f"manifest writer missing gate hyperparameter: {snippet}"
 
@@ -107,6 +108,7 @@ for snippet in [
     "AGENT_WORKERS=32",
     'ENFORCE_EAGER="${ENFORCE_EAGER:-False}"',
     'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
+    'actor_rollout_ref.rollout.quantization="${ROLLOUT_QUANTIZATION:-null}"',
 ]:
     assert snippet in phase_common, f"missing H100 profile setting: {snippet}"
 

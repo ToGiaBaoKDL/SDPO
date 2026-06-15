@@ -89,6 +89,7 @@ def main() -> None:
         "ENFORCE_EAGER",
         "effective_rollouts",
         'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
+        'actor_rollout_ref.rollout.quantization="${ROLLOUT_QUANTIZATION:-null}"',
         "actor_rollout_ref.rollout.val_kwargs.n=1",
         "actor_rollout_ref.rollout.val_kwargs.temperature=0.01",
     ]:
@@ -170,6 +171,7 @@ def main() -> None:
         "variant_hyperparameters",
         "sdpo_reliability_gate",
         "RELIABILITY_GATE_THRESHOLD",
+        "ROLLOUT_QUANTIZATION",
     ]:
         require_snippet(manifest_path, manifest, snippet)
 
