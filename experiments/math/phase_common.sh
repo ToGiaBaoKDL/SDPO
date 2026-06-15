@@ -37,8 +37,8 @@ sdpo_math_configure_profile() {
       MODEL_LEN=6144
       ACTOR_LEN=8192
       REPROMPT_LEN=4096
-      BATCHED_TOKENS=131072
-      GPU_UTIL="${GPU_UTIL:-0.86}"
+      BATCHED_TOKENS=98304
+      GPU_UTIL="${GPU_UTIL:-0.78}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     a100:quality)
@@ -49,8 +49,8 @@ sdpo_math_configure_profile() {
       MODEL_LEN=8192
       ACTOR_LEN=10240
       REPROMPT_LEN=5120
-      BATCHED_TOKENS=131072
-      GPU_UTIL="${GPU_UTIL:-0.86}"
+      BATCHED_TOKENS=98304
+      GPU_UTIL="${GPU_UTIL:-0.74}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-False}"
       ;;
     h100:fast)

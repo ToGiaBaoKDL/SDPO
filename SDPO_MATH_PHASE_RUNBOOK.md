@@ -35,13 +35,13 @@ Profile settings are selected by `HARDWARE_PROFILE`:
 | Hardware | Profile | Train batch | Rollout n | Workers | Response | Model len | vLLM util |
 |---|---|---:|---:|---:|---:|---:|---:|
 | A100-80GB | `fast` | 64 | 4 | 128 | 1536 | 5120 | 0.86 |
-| A100-80GB | `balanced` | 64 | 4 | 128 | 2048 | 6144 | 0.86 |
-| A100-80GB | `quality` | 48 | 4 | 96 | 3072 | 8192 | 0.86 |
+| A100-80GB | `balanced` | 64 | 4 | 128 | 2048 | 6144 | 0.78 |
+| A100-80GB | `quality` | 48 | 4 | 96 | 3072 | 8192 | 0.74 |
 | H100 | `fast` | 64 | 4 | 128 | 1536 | 5120 | 0.92 |
 | H100 | `balanced` | 64 | 4 | 128 | 2048 | 6144 | 0.93 |
 | H100 | `quality` | 48 | 4 | 96 | 3072 | 8192 | 0.93 |
 
-Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. A100 defaults target reliable 80GB startup; if memory is stable and you want to push throughput, rerun with `GPU_UTIL=0.90`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
+Common stability defaults: Qwen3 only, Python 3.12, SDPA attention, `use_remove_padding=False`, `VLLM_WORKER_MULTIPROC_METHOD=spawn`, validation temperature `0.01`, and `actor_rollout_ref.rollout.enforce_eager=False`. A100 defaults reserve less vLLM memory for larger models so the hybrid trainer can start reliably. If memory is stable and you want to push throughput, rerun with a higher `GPU_UTIL`. If CUDA graph capture fails, rerun the same phase with `ENFORCE_EAGER=True`.
 
 ## Setup
 
@@ -61,6 +61,8 @@ bash experiments/math/setup_math_notebook.sh
 
 Useful setup flags:
 
+- `SKIP_INSTALL_IF_READY=1`: skip dependency installation when `.venv` already matches the pinned runtime; enabled by default.
+- `FORCE_REINSTALL=1`: force dependency installation even if `.venv` looks ready.
 - `PREPARE_DATA=0`: skip data creation.
 - `RUN_CPU_CHECK=1`: run CPU/static checks during setup.
 - `VERIFY_HF_MODELS=1`: add a lightweight Hugging Face metadata check during setup.

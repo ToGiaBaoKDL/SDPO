@@ -68,6 +68,9 @@ setup = Path("experiments/math/setup_math_notebook.sh").read_text(encoding="utf-
 for snippet in [
     'RUN_CPU_CHECK="${RUN_CPU_CHECK:-0}"',
     'VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-0}"',
+    'SKIP_INSTALL_IF_READY="${SKIP_INSTALL_IF_READY:-1}"',
+    'FORCE_REINSTALL="${FORCE_REINSTALL:-0}"',
+    "skip_dependency_install=1",
 ]:
     assert snippet in setup, f"setup script missing lightweight default: {snippet}"
 for snippet in [

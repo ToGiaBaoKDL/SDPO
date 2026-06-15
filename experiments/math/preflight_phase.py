@@ -81,6 +81,8 @@ def main() -> None:
         "BATCHED_TOKENS=98304",
         "BATCHED_TOKENS=131072",
         'GPU_UTIL="${GPU_UTIL:-0.86}"',
+        'GPU_UTIL="${GPU_UTIL:-0.78}"',
+        'GPU_UTIL="${GPU_UTIL:-0.74}"',
         "ENFORCE_EAGER",
         "effective_rollouts",
         'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
@@ -106,6 +108,9 @@ def main() -> None:
         "SDPO_PYTHON_VERSION",
         'RUN_CPU_CHECK="${RUN_CPU_CHECK:-0}"',
         'VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-0}"',
+        'SKIP_INSTALL_IF_READY="${SKIP_INSTALL_IF_READY:-1}"',
+        'FORCE_REINSTALL="${FORCE_REINSTALL:-0}"',
+        "skip_dependency_install=1",
         "transformers==4.57.1",
         "numpy==2.1.0",
     ]:

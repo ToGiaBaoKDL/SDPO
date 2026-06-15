@@ -13,6 +13,8 @@ RUN_CPU_CHECK="${RUN_CPU_CHECK:-0}"
 VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-0}"
 STABLE_TRANSFORMERS_SPEC="${STABLE_TRANSFORMERS_SPEC:-transformers==4.57.1}"
 NUMPY_SPEC="${NUMPY_SPEC:-numpy==2.1.0}"
+SKIP_INSTALL_IF_READY="${SKIP_INSTALL_IF_READY:-1}"
+FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
 
 if [[ "${SDPO_PYTHON_VERSION}" != 3.12* && "${ALLOW_UNTESTED_PYTHON}" != "1" ]]; then
   cat >&2 <<EOF
@@ -35,6 +37,8 @@ echo "run_cpu_check=${RUN_CPU_CHECK}"
 echo "verify_hf_models=${VERIFY_HF_MODELS}"
 echo "stable_transformers_spec=${STABLE_TRANSFORMERS_SPEC}"
 echo "numpy_spec=${NUMPY_SPEC}"
+echo "skip_install_if_ready=${SKIP_INSTALL_IF_READY}"
+echo "force_reinstall=${FORCE_REINSTALL}"
 echo "vllm_worker_multiproc_method=${VLLM_WORKER_MULTIPROC_METHOD}"
 
 if [[ -x .venv/bin/python ]]; then
@@ -56,25 +60,67 @@ EOF
   fi
 fi
 
-python3 -m pip install -q -U uv
-uv venv .venv --python "${SDPO_PYTHON_VERSION}"
+VENV_READY=0
+if [[ "${FORCE_REINSTALL}" != "1" && "${SKIP_INSTALL_IF_READY}" == "1" && -x .venv/bin/python ]]; then
+  if INSTALL_MATH_VERIFY="${INSTALL_MATH_VERIFY}" \
+    STABLE_TRANSFORMERS_SPEC="${STABLE_TRANSFORMERS_SPEC}" \
+    NUMPY_SPEC="${NUMPY_SPEC}" \
+    .venv/bin/python - <<'PY'
+import importlib.metadata as metadata
+import importlib.util
+import os
+import sys
+
+required = ["torch", "ray", "transformers", "vllm", "datasets", "pyarrow"]
+missing = [name for name in required if importlib.util.find_spec(name) is None]
+if missing:
+    raise SystemExit(f"missing {missing}")
+
+if os.environ.get("INSTALL_MATH_VERIFY") == "1" and importlib.util.find_spec("math_verify") is None:
+    raise SystemExit("missing math_verify")
+
+def require_exact(dist_name: str, spec: str) -> None:
+    if "==" not in spec:
+        return
+    expected = spec.split("==", 1)[1]
+    actual = metadata.version(dist_name)
+    if actual != expected:
+        raise SystemExit(f"{dist_name} {actual} != {expected}")
+
+require_exact("transformers", os.environ["STABLE_TRANSFORMERS_SPEC"])
+require_exact("numpy", os.environ["NUMPY_SPEC"])
+PY
+  then
+    VENV_READY=1
+  fi
+fi
+
+if [[ "${VENV_READY}" == "1" ]]; then
+  echo "venv_ready=1 skip_dependency_install=1"
+else
+  echo "venv_ready=0 installing_dependencies=1"
+  python3 -m pip install -q -U uv
+  uv venv .venv --python "${SDPO_PYTHON_VERSION}"
+fi
 
 unset SDPO_SKIP_VENV
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/math_env.sh"
 
 python --version
-uv pip install -q -U pip
-uv pip install -q pyyaml pyarrow pandas datasets
-uv pip install -q -e ".[vllm]"
+if [[ "${VENV_READY}" != "1" ]]; then
+  uv pip install -q -U pip
+  uv pip install -q pyyaml pyarrow pandas datasets
+  uv pip install -q -e ".[vllm]"
 
-echo "Installing stable Transformers ${STABLE_TRANSFORMERS_SPEC}"
-uv pip install -q -U "${STABLE_TRANSFORMERS_SPEC}"
-echo "Installing NumPy runtime pin ${NUMPY_SPEC}"
-uv pip install -q -U "${NUMPY_SPEC}"
+  echo "Installing stable Transformers ${STABLE_TRANSFORMERS_SPEC}"
+  uv pip install -q -U "${STABLE_TRANSFORMERS_SPEC}"
+  echo "Installing NumPy runtime pin ${NUMPY_SPEC}"
+  uv pip install -q -U "${NUMPY_SPEC}"
 
-if [[ "${INSTALL_MATH_VERIFY}" == "1" ]]; then
-  uv pip install -q "math-verify[antlr4_9_3]==0.8.0"
+  if [[ "${INSTALL_MATH_VERIFY}" == "1" ]]; then
+    uv pip install -q "math-verify[antlr4_9_3]==0.8.0"
+  fi
 fi
 
 python - <<'PY'
