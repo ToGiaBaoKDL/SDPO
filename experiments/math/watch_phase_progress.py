@@ -26,6 +26,8 @@ PROGRESS_KEYS = {
     "actor/grad_norm": "grad",
     "perf/time_per_step": "step_s",
     "perf/throughput": "tok_s",
+    "response_length/mean": "resp_tok",
+    "response_length/clip_ratio": "resp_clip",
     "timing_s/gen": "gen_s",
     "timing_s/old_log_prob": "oldlp_s",
     "timing_s/update_actor": "upd_s",

@@ -4,10 +4,17 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pyarrow.parquet as pq
 import yaml
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from examples.data_preprocess.dapo_math_processed import DEFAULT_PROMPT_SUFFIX
 
 
 EXPECTED_VARIANTS = ["base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"]
@@ -61,11 +68,18 @@ def main() -> None:
     assert checks["dataloader_workers"] == 0
     assert checks["filter_workers"] == 1
 
-    train_rows = pq.read_table("data/dapo_math_en/train.parquet").num_rows
-    val_rows = pq.read_table("data/dapo_math_en/val.parquet").num_rows
+    train_table = pq.read_table("data/dapo_math_en/train.parquet", columns=["prompt"])
+    val_table = pq.read_table("data/dapo_math_en/val.parquet", columns=["prompt"])
+    train_rows = train_table.num_rows
+    val_rows = val_table.num_rows
     print("data_rows:", {"train": train_rows, "val": val_rows})
     assert train_rows > 1000
     assert val_rows >= 128
+    for table in (train_table, val_table):
+        assert all(
+            row["prompt"][0]["content"].endswith(DEFAULT_PROMPT_SUFFIX)
+            for row in table.to_pylist()
+        ), "prepared DAPO-Math prompts are stale; rerun setup_math_notebook.sh"
 
     phase_common_path = "experiments/math/phase_common.sh"
     phase_common = Path(phase_common_path).read_text(encoding="utf-8")
@@ -123,6 +137,7 @@ def main() -> None:
         "skip_dependency_install=1",
         "transformers==4.57.1",
         "numpy==2.1.0",
+        "update_prepared_prompts.py",
     ]:
         require_snippet(setup_path, setup, snippet)
     for snippet in [
@@ -230,6 +245,7 @@ def main() -> None:
         "stage=",
         '"timing_s/gen": "gen_s"',
         '"timing_s/old_log_prob": "oldlp_s"',
+        '"response_length/mean": "resp_tok"',
         "read_jsonl_from",
     ]:
         require_snippet(watcher_path, watcher, snippet)
@@ -240,6 +256,8 @@ def main() -> None:
         "sorted(VARIANTS, key=len, reverse=True)",
         "time_per_step_s",
         "old_log_prob_s",
+        "response_length_mean",
+        "response_length_clip_ratio",
         'data.get("timing_s/update_actor", "")',
     ]:
         require_snippet(summary_path, summary, snippet)

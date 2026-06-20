@@ -33,7 +33,10 @@ import pyarrow.parquet as pq
 
 DEFAULT_DATASET_NAME = "open-r1/DAPO-Math-17k-Processed"
 DEFAULT_SUBSET = "en"
-DEFAULT_PROMPT_SUFFIX = "Please reason step by step, and put your final answer within \\boxed{}."
+DEFAULT_PROMPT_SUFFIX = (
+    "Give a concise solution with only the necessary reasoning; do not restate the problem or repeat "
+    "calculations. End with exactly one final answer in \\boxed{}."
+)
 DEFAULT_DATA_SOURCE = "math_dapo"
 DEFAULT_EVAL_DATASETS = ("MathArena/aime_2025", "MathArena/paper_benchmark")
 EVAL_PROBLEM_FIELDS = ("problem", "prompt", "question", "description")
@@ -113,6 +116,7 @@ def normalize_problem_text(text: str) -> str:
         r"remember to put your answer on its own line after [\"']?answer:[\"']?\.?",
         r"please reason step by step,? and put your final answer within \\boxed\{\}\.?",
         r"let'?s think step by step and output the final answer within \\boxed\{\}\.?",
+        re.escape(DEFAULT_PROMPT_SUFFIX.lower()),
     ]
     for pattern in instruction_patterns:
         text = re.sub(pattern, " ", text, flags=re.DOTALL)

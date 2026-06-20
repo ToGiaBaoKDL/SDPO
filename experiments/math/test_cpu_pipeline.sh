@@ -22,6 +22,7 @@ bash -n \
   experiments/math/check_phase_report_ready.py \
   experiments/math/inspect_phase_logs.py \
   experiments/math/summarize_phase_results.py \
+  experiments/math/update_prepared_prompts.py \
   experiments/math/verify_hf_models.py \
   experiments/math/watch_phase_progress.py \
   experiments/math/write_phase_manifest.py \
@@ -98,6 +99,7 @@ for snippet in [
     "stage=",
     '"timing_s/gen": "gen_s"',
     '"timing_s/old_log_prob": "oldlp_s"',
+    '"response_length/mean": "resp_tok"',
     "read_jsonl_from",
 ]:
     assert snippet in watcher, f"watcher missing progress heartbeat support: {snippet}"
@@ -106,6 +108,8 @@ summary = Path("experiments/math/summarize_phase_results.py").read_text(encoding
 for snippet in [
     "time_per_step_s",
     "old_log_prob_s",
+    "response_length_mean",
+    "response_length_clip_ratio",
     'data.get("timing_s/update_actor", "")',
     "sorted(VARIANTS, key=len, reverse=True)",
 ]:
@@ -214,6 +218,8 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from examples.data_preprocess.dapo_math_processed import DEFAULT_PROMPT_SUFFIX
+
 required = [
     Path("data/dapo_math_en/train.parquet"),
     Path("data/dapo_math_en/val.parquet"),
@@ -231,9 +237,7 @@ for split, expected_min_rows in [("train", 1), ("val", 1)]:
     assert all(row["reward_model"]["ground_truth"] for row in rows)
     assert all(row["extra_info"].get("feedback_mode") == "safe" for row in rows)
     assert all(
-        row["prompt"][0]["content"].endswith(
-            "Please reason step by step, and put your final answer within \\boxed{}."
-        )
+        row["prompt"][0]["content"].endswith(DEFAULT_PROMPT_SUFFIX)
         for row in rows
     )
     assert not any("Answer:" in row["prompt"][0]["content"] for row in rows)

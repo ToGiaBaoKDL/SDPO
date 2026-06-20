@@ -193,6 +193,10 @@ if [[ "${PREPARE_DATA}" == "1" && ! -f data/dapo_math_en/train.parquet ]]; then
     --ngram_jaccard_threshold 0.70
 fi
 
+if [[ "${PREPARE_DATA}" == "1" ]]; then
+  python experiments/math/update_prepared_prompts.py --data-dir data/dapo_math_en
+fi
+
 if [[ "${RUN_CPU_CHECK}" == "1" ]]; then
   PYTHON=.venv/bin/python bash experiments/math/test_cpu_pipeline.sh
 fi
