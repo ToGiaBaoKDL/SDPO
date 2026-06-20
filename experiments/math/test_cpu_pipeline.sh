@@ -42,6 +42,9 @@ for path, expected in expected_defaults.items():
 runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding="utf-8")
 for expected in ["Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "Qwen/Qwen3-8B"]:
     assert expected in runner, f"benchmark runner missing model default {expected}"
+math_env = Path("experiments/math/math_env.sh").read_text(encoding="utf-8")
+assert 'SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3-8B}"' in math_env
+assert 'MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-8B}}"' in runner
 for snippet in [
     'VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-12}"',

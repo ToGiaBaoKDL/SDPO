@@ -7,7 +7,7 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Item | Value |
 |---|---|
 | Python | 3.12 |
-| Models | Qwen3 1.7B / 4B / 8B |
+| Models | Qwen3 1.7B / 8B |
 | Hardware | `a100` default, `h100` optional |
 | Variants | `base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate` |
 | Rollout TP | 2 |
@@ -19,7 +19,7 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Phase | Model | Profile | Steps | Train max | Val max |
 |---|---|---|---:|---:|---:|
 | Pilot | `Qwen/Qwen3-1.7B` | `fast` | 10 | 512 | 128 |
-| Scale decision | `Qwen/Qwen3-4B` | `fast` | 12 | 512 | 64 |
+| Scale decision | `Qwen/Qwen3-8B` | `fast` | 12 | 512 | 64 |
 | Thesis | `Qwen/Qwen3-8B` | `balanced` | 32 | 1024 | 256 |
 
 | Profile | Train batch | Rollout n | Workers | Response | Model len |

@@ -50,7 +50,7 @@ case "${PHASE}" in
     ;;
   scale_decision)
     RUN_PROFILE=fast
-    MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-4B}}"
+    MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-8B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-12}"
     if [[ "${HARDWARE_PROFILE}" == "h100" ]]; then
       TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-512}"
