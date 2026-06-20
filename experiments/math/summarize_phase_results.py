@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 
-VARIANTS = ["base_rl", "sdpo_vanilla", "sdpo_reliability_gate", "base_model"]
+VARIANTS = ["base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate", "base_model"]
 SUMMARY_COLUMNS = [
     "variant",
     "step",
@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
 
 def infer_variant(path: Path) -> str:
     stem = path.stem
-    for variant in VARIANTS:
+    for variant in sorted(VARIANTS, key=len, reverse=True):
         if stem == variant or stem.startswith(f"{variant}_"):
             return variant
     return stem

@@ -6,10 +6,11 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 from pathlib import Path
 
 
-REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability_gate"}
+REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"}
 TRAINED_VARIANTS = REQUIRED_VARIANTS
 
 
@@ -29,6 +30,27 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def checkpoint_step(path: Path) -> int:
+    match = re.fullmatch(r"global_step_(\d+)", path.name)
+    if match is None:
+        return -1
+    return int(match.group(1))
+
+
+def latest_checkpoint_dir(root: Path) -> Path | None:
+    tracker = root / "latest_checkpointed_iteration.txt"
+    if tracker.exists():
+        step = tracker.read_text(encoding="utf-8").strip()
+        candidate = root / f"global_step_{step}"
+        if candidate.exists():
+            return candidate
+
+    candidates = [path for path in root.glob("global_step_*") if path.is_dir()]
+    if not candidates:
+        return None
+    return max(candidates, key=checkpoint_step)
+
+
 def main() -> None:
     args = parse_args()
     manifest_path = args.log_dir / "manifest.json"
@@ -44,7 +66,20 @@ def main() -> None:
     require(manifest.get("config_name") == "sdpo_math_a100", f"unexpected config_name: {manifest.get('config_name')}")
     require(manifest.get("profile_settings"), "manifest missing profile_settings")
     require(manifest.get("effective_rollouts_per_step"), "manifest missing effective_rollouts_per_step")
+    reliability_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability", {})
+    require(
+        reliability_cfg.get("reliability_weighting") is True,
+        "manifest missing sdpo_reliability reliability_weighting=True",
+    )
+    require(
+        str(reliability_cfg.get("reliability_gate_threshold")) == "0.0",
+        "manifest missing sdpo_reliability reliability_gate_threshold=0.0",
+    )
     gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+    require(
+        gate_cfg.get("reliability_weighting") is True,
+        "manifest missing sdpo_reliability_gate reliability_weighting=True",
+    )
     require(
         gate_cfg.get("reliability_gate_threshold") not in (None, ""),
         "manifest missing sdpo_reliability_gate reliability_gate_threshold",
@@ -70,8 +105,9 @@ def main() -> None:
         if variant.startswith("sdpo_"):
             require(row["sdpo_reprompt_fraction"] != "", f"{variant} missing SDPO reprompt metric")
             require(row["sdpo_feedback_used_fraction"] != "", f"{variant} missing SDPO feedback-used metric")
-        if variant == "sdpo_reliability_gate":
+        if variant in {"sdpo_reliability", "sdpo_reliability_gate"}:
             require(row["sdpo_reliability_weight_mean"] != "", f"{variant} missing reliability weight metric")
+        if variant == "sdpo_reliability_gate":
             require(
                 row.get("sdpo_reliability_gate_threshold", "") != "",
                 "sdpo_reliability_gate missing gate threshold metric",
@@ -87,10 +123,18 @@ def main() -> None:
 
     if args.require_checkpoints:
         exp_suffix = manifest["exp_suffix"]
+        expected_step = int(manifest["train_steps"])
         for variant in TRAINED_VARIANTS:
             ckpt_root = project_root / "checkpoints/sdpo_math" / f"{variant}_{exp_suffix}"
             require(ckpt_root.exists(), f"missing checkpoint root for {variant}: {ckpt_root}")
-            require(list(ckpt_root.rglob("global_step_*")), f"missing global_step checkpoint for {variant}: {ckpt_root}")
+            latest_ckpt = latest_checkpoint_dir(ckpt_root)
+            require(latest_ckpt is not None, f"missing global_step checkpoint for {variant}: {ckpt_root}")
+            require(
+                checkpoint_step(latest_ckpt) == expected_step,
+                f"{variant} latest checkpoint step mismatch: {latest_ckpt}, expected global_step_{expected_step}",
+            )
+            require((latest_ckpt / "actor").exists(), f"{variant} checkpoint missing actor dir: {latest_ckpt}")
+            require((latest_ckpt / "data.pt").exists(), f"{variant} checkpoint missing dataloader state: {latest_ckpt}")
 
     print("phase_report_ready_ok")
 

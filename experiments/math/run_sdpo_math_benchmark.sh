@@ -15,7 +15,7 @@ PHASE="${PHASE:-pilot}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 LOGGER="${LOGGER:-[\"console\"]}"
 CONFIG_NAME="${CONFIG_NAME:-sdpo_math_a100}"
-VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
+VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"
 DRY_RUN="${DRY_RUN:-0}"
 SEED="${SEED:-42}"
 VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-1}"
@@ -261,6 +261,9 @@ run_sdpo_variant() {
   case "${variant}" in
     sdpo_vanilla)
       ;;
+    sdpo_reliability)
+      reliability=True
+      ;;
     sdpo_reliability_gate)
       reliability=True
       reliability_gate_threshold="${RELIABILITY_GATE_THRESHOLD}"
@@ -306,11 +309,11 @@ for variant in ${VARIANTS}; do
     base_rl)
       run_base_rl "${exp_name}" "$@"
       ;;
-    sdpo_vanilla|sdpo_reliability_gate)
+    sdpo_vanilla|sdpo_reliability|sdpo_reliability_gate)
       run_sdpo_variant "${variant}" "${exp_name}" "$@"
       ;;
     *)
-      echo "Unknown variant=${variant}. Valid: base_model base_rl sdpo_vanilla sdpo_reliability_gate." >&2
+      echo "Unknown variant=${variant}. Valid: base_model base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate." >&2
       exit 1
       ;;
   esac

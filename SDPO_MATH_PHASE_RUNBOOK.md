@@ -9,7 +9,7 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Python | 3.12 |
 | Models | Qwen3 1.7B / 4B / 8B |
 | Hardware | `a100` default, `h100` optional |
-| Variants | `base_rl sdpo_vanilla sdpo_reliability_gate` |
+| Variants | `base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate` |
 | Rollout TP | 2 |
 | Rollout quantization | `null` for Phase 2/4 |
 | Max seqs | 64 |
@@ -61,7 +61,7 @@ python experiments/math/preflight_phase.py
 export DRY_RUN=1
 export PHASE=pilot
 export TRAIN_STEPS=1
-export VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"
+export VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate"
 export RUN_TAG=preflight_dryrun
 export EXP_SUFFIX=preflight_dryrun_seed42
 export LOG_DIR="$PROJECT_ROOT/logs/sdpo_math_phase/preflight_dryrun"
@@ -105,7 +105,7 @@ unset GPU_UTIL
 export MAX_NUM_SEQS=64
 export ROLLOUT_TP=2
 export ENFORCE_EAGER=True
-export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
+export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-12}"
 export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-512}"
 export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-64}"
@@ -145,7 +145,7 @@ unset GPU_UTIL
 export MAX_NUM_SEQS=64
 export ROLLOUT_TP=2
 export ENFORCE_EAGER=True
-export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
+export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-32}"
 export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"
 export EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
@@ -178,6 +178,10 @@ python experiments/math/check_phase_report_ready.py \
   --expect-model "$THESIS_MODEL_PATH" \
   --expect-profile balanced \
   --expect-seed 42
+python experiments/math/download_phase_artifacts.py \
+  --log-dir "$LOG_DIR" \
+  --include-checkpoints \
+  --require-checkpoints
 cat "$LOG_DIR/manifest.json"
 cat "$LOG_DIR/summary.md"
 

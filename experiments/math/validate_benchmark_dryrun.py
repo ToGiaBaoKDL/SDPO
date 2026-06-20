@@ -44,6 +44,17 @@ COMMON_SNIPPETS = {
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=False",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0",
     ],
+    "sdpo_reliability": [
+        "--config-name sdpo_math_a100",
+        "actor_rollout_ref.model.path={model}",
+        "critic.model.path={model}",
+        "trainer.total_training_steps={train_steps}",
+        "trainer.validation_data_dir=",
+        "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
+        "actor_rollout_ref.actor.self_distillation.include_environment_feedback=True",
+        "actor_rollout_ref.actor.self_distillation.reliability_weighting=True",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0",
+    ],
     "sdpo_reliability_gate": [
         "--config-name sdpo_math_a100",
         "actor_rollout_ref.model.path={model}",

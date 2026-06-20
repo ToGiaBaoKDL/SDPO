@@ -10,7 +10,7 @@ import pyarrow.parquet as pq
 import yaml
 
 
-EXPECTED_VARIANTS = ["base_rl", "sdpo_vanilla", "sdpo_reliability_gate"]
+EXPECTED_VARIANTS = ["base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"]
 
 
 def require_snippet(path: str, text: str, snippet: str) -> None:
@@ -169,6 +169,7 @@ def main() -> None:
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "RELIABILITY_GATE_THRESHOLD",
         "reliability_gate_threshold",
+        "sdpo_reliability",
         "sdpo_reliability_gate",
     ]:
         require_snippet(runner_path, runner, snippet)
@@ -177,7 +178,9 @@ def main() -> None:
     manifest = Path(manifest_path).read_text(encoding="utf-8")
     for snippet in [
         "variant_hyperparameters",
+        "sdpo_reliability",
         "sdpo_reliability_gate",
+        "reliability_weighting",
         "RELIABILITY_GATE_THRESHOLD",
         "ROLLOUT_QUANTIZATION",
         "ROLLOUT_TP",
@@ -188,7 +191,9 @@ def main() -> None:
     report_ready_path = "experiments/math/check_phase_report_ready.py"
     report_ready = Path(report_ready_path).read_text(encoding="utf-8")
     for snippet in [
-        'REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability_gate"}',
+        'REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"}',
+        "reliability_weighting",
+        "sdpo_reliability",
         "sdpo_reliability_gate",
         "reliability_gate_threshold",
     ]:
@@ -232,11 +237,22 @@ def main() -> None:
     summary_path = "experiments/math/summarize_phase_results.py"
     summary = Path(summary_path).read_text(encoding="utf-8")
     for snippet in [
+        "sorted(VARIANTS, key=len, reverse=True)",
         "time_per_step_s",
         "old_log_prob_s",
         'data.get("timing_s/update_actor", "")',
     ]:
         require_snippet(summary_path, summary, snippet)
+
+    download_path = "experiments/math/download_phase_artifacts.py"
+    download = Path(download_path).read_text(encoding="utf-8")
+    for snippet in [
+        "latest_thesis_log_dir.txt",
+        "include-checkpoints",
+        "require-checkpoints",
+        "latest_checkpointed_iteration.txt",
+    ]:
+        require_snippet(download_path, download, snippet)
 
     print("phase0_ok")
 

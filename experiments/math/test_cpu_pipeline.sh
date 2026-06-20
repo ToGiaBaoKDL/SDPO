@@ -25,6 +25,7 @@ bash -n \
   experiments/math/verify_hf_models.py \
   experiments/math/watch_phase_progress.py \
   experiments/math/write_phase_manifest.py \
+  experiments/math/download_phase_artifacts.py \
   experiments/math/validate_benchmark_dryrun.py
 "${PYTHON_BIN}" - <<'PY'
 from pathlib import Path
@@ -42,7 +43,7 @@ runner = Path("experiments/math/run_sdpo_math_benchmark.sh").read_text(encoding=
 for expected in ["Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "Qwen/Qwen3-8B"]:
     assert expected in runner, f"benchmark runner missing model default {expected}"
 for snippet in [
-    'VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"',
+    'VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-32}"',
     'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
@@ -58,6 +59,7 @@ for snippet in [
 manifest = Path("experiments/math/write_phase_manifest.py").read_text(encoding="utf-8")
 for snippet in [
     "variant_hyperparameters",
+    "sdpo_reliability",
     "sdpo_reliability_gate",
     "RELIABILITY_GATE_THRESHOLD",
     "ROLLOUT_QUANTIZATION",
@@ -102,8 +104,27 @@ for snippet in [
     "time_per_step_s",
     "old_log_prob_s",
     'data.get("timing_s/update_actor", "")',
+    "sorted(VARIANTS, key=len, reverse=True)",
 ]:
     assert snippet in summary, f"summary missing timing field: {snippet}"
+
+import importlib.util
+
+summary_spec = importlib.util.spec_from_file_location("summarize_phase_results", "experiments/math/summarize_phase_results.py")
+summary_mod = importlib.util.module_from_spec(summary_spec)
+summary_spec.loader.exec_module(summary_mod)
+assert summary_mod.infer_variant(Path("sdpo_reliability_gate_phase_seed42.jsonl")) == "sdpo_reliability_gate"
+assert summary_mod.infer_variant(Path("sdpo_reliability_phase_seed42.jsonl")) == "sdpo_reliability"
+
+download_script = Path("experiments/math/download_phase_artifacts.py").read_text(encoding="utf-8")
+for snippet in [
+    "latest_thesis_log_dir.txt",
+    "include-checkpoints",
+    "require-checkpoints",
+    "latest_checkpointed_iteration.txt",
+    "TRAINED_VARIANTS",
+]:
+    assert snippet in download_script, f"download script missing artifact logic: {snippet}"
 
 phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-8")
 assert "+ray_kwargs.ray_init.log_to_driver=False" in phase_common
@@ -283,7 +304,7 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=a100 \
 PHASE=pilot \
 TRAIN_STEPS=1 \
-VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate" \
+VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_dryrun \
 EXP_SUFFIX=cpu_pipeline_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun" \
@@ -299,7 +320,7 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=h100 \
 PHASE=pilot \
 TRAIN_STEPS=1 \
-VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate" \
+VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_h100_dryrun \
 EXP_SUFFIX=cpu_pipeline_h100_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_h100_dryrun" \
@@ -315,7 +336,7 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=a100 \
 PHASE=scale_decision \
 TRAIN_STEPS=1 \
-VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate" \
+VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_phase2_dryrun \
 EXP_SUFFIX=cpu_pipeline_phase2_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_phase2_dryrun" \
@@ -332,7 +353,7 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=a100 \
 PHASE=thesis \
 TRAIN_STEPS=1 \
-VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate" \
+VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_thesis_dryrun \
 EXP_SUFFIX=cpu_pipeline_thesis_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_thesis_dryrun" \
@@ -344,5 +365,11 @@ bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_cpu_pipeline_t
   --hardware-profile a100 \
   --profile balanced \
   --exp-suffix cpu_pipeline_thesis_dryrun_seed42
+
+"${PYTHON_BIN}" experiments/math/download_phase_artifacts.py \
+  --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_thesis_dryrun" \
+  --output-dir /tmp/sdpo_math_download_test >/tmp/sdpo_math_download_test.log
+
+test -s "$(awk -F= '/^archive=/{print $2}' /tmp/sdpo_math_download_test.log)"
 
 echo "CPU pipeline checks passed"
