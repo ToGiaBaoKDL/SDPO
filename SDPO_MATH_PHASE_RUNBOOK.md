@@ -19,7 +19,7 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Phase | Model | Profile | Steps | Train max | Val max |
 |---|---|---|---:|---:|---:|
 | Pilot | `Qwen/Qwen3-1.7B` | `fast` | 10 | 512 | 128 |
-| Scale decision | `Qwen/Qwen3-8B` | `fast` | 12 | 512 | 64 |
+| Scale decision | `Qwen/Qwen3-8B` | `fast` | 12 | 256 | 64 |
 | Thesis | `Qwen/Qwen3-8B` | `balanced` | 32 | 1024 | 256 |
 
 | Profile | Train batch | Rollout n | Workers | Response | Model len |
@@ -101,13 +101,11 @@ source experiments/math/math_env.sh
 
 export PHASE=scale_decision
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
-unset GPU_UTIL
 export MAX_NUM_SEQS=64
-export ROLLOUT_TP=2
 export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-12}"
-export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-512}"
+export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"
 export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-64}"
 export EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
 export SAVE_FREQ="${SAVE_FREQ:--1}"

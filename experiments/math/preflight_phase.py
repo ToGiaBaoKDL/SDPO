@@ -169,6 +169,7 @@ def main() -> None:
         "RUN_PROFILE=fast",
         "RUN_PROFILE=balanced",
         'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
+        'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"',
         'TRAIN_STEPS="${TRAIN_STEPS:-32}"',
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
         "ROLLOUT_TP=2",

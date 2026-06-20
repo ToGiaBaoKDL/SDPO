@@ -49,6 +49,7 @@ assert 'MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-8B}}"' in runne
 for snippet in [
     'VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
+    'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-32}"',
     'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
     'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
