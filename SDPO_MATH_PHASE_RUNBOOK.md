@@ -15,6 +15,7 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Max seqs | 64 |
 | Attention | SDPA |
 | LoRA | enabled for trained variants |
+| Reliability gate execution | DP-aligned sparse student/teacher forwards |
 
 | Phase | Model | Profile | Steps | Train max | Val max |
 |---|---|---|---:|---:|---:|

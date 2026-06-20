@@ -50,6 +50,11 @@ def main() -> None:
         "use_remove_padding": cfg["actor_rollout_ref"]["model"]["use_remove_padding"],
         "dataloader_workers": cfg["data"]["dataloader_num_workers"],
         "filter_workers": cfg["data"]["filter_overlong_prompts_workers"],
+        "gate_sparse_execution": cfg["actor_rollout_ref"]["actor"]["self_distillation"][
+            "reliability_gate_sparse_execution"
+        ],
+        "actor_dynamic_batching": cfg["actor_rollout_ref"]["actor"]["use_dynamic_bsz"],
+        "actor_shuffle": cfg["actor_rollout_ref"]["actor"]["shuffle"],
     }
     print("config:", checks)
     assert "data/dapo_math_en/train.parquet" in checks["train_files"][0]
@@ -67,6 +72,9 @@ def main() -> None:
     assert checks["use_remove_padding"] is False
     assert checks["dataloader_workers"] == 0
     assert checks["filter_workers"] == 1
+    assert checks["gate_sparse_execution"] is True
+    assert checks["actor_dynamic_batching"] is False
+    assert checks["actor_shuffle"] is False
 
     train_table = pq.read_table("data/dapo_math_en/train.parquet", columns=["prompt"])
     val_table = pq.read_table("data/dapo_math_en/val.parquet", columns=["prompt"])
@@ -137,7 +145,7 @@ def main() -> None:
         "skip_dependency_install=1",
         "transformers==4.57.1",
         "numpy==2.1.0",
-        "update_prepared_prompts.py",
+        "--update_prepared_dir",
     ]:
         require_snippet(setup_path, setup, snippet)
     for snippet in [
@@ -184,7 +192,9 @@ def main() -> None:
         "BASE_MODEL_TRAIN_MAX_SAMPLES",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "RELIABILITY_GATE_THRESHOLD",
+        "RELIABILITY_GATE_SPARSE_EXECUTION",
         "reliability_gate_threshold",
+        "reliability_gate_sparse_execution",
         "sdpo_reliability",
         "sdpo_reliability_gate",
     ]:
@@ -201,6 +211,7 @@ def main() -> None:
         "ROLLOUT_QUANTIZATION",
         "ROLLOUT_TP",
         "MAX_NUM_SEQS",
+        "reliability_gate_sparse_execution",
     ]:
         require_snippet(manifest_path, manifest, snippet)
 
@@ -212,6 +223,7 @@ def main() -> None:
         "sdpo_reliability",
         "sdpo_reliability_gate",
         "reliability_gate_threshold",
+        "reliability_gate_compute_fraction",
     ]:
         require_snippet(report_ready_path, report_ready, snippet)
 
@@ -235,8 +247,19 @@ def main() -> None:
         'self._progress_heartbeat("step_start")',
         'self._progress_heartbeat("gen_start")',
         'self._progress_heartbeat("actor_update_done")',
+        "build_reliability_gate_schedule",
+        "_prepare_sparse_self_distillation_actor_batch",
+        "self_distillation_sparse_compute_mask",
     ]:
         require_snippet(trainer_path, trainer, snippet)
+
+    actor_worker_path = "verl/workers/actor/dp_actor.py"
+    actor_worker = Path(actor_worker_path).read_text(encoding="utf-8")
+    for snippet in ["initialize_ema_teacher", "_trainable_teacher_parameter_pairs", "ema_teacher_update"]:
+        require_snippet(actor_worker_path, actor_worker, snippet)
+    fsdp_worker_path = "verl/workers/fsdp_workers.py"
+    fsdp_worker = Path(fsdp_worker_path).read_text(encoding="utf-8")
+    require_snippet(fsdp_worker_path, fsdp_worker, "self.actor.initialize_ema_teacher()")
 
     watcher_path = "experiments/math/watch_phase_progress.py"
     watcher = Path(watcher_path).read_text(encoding="utf-8")
@@ -247,6 +270,8 @@ def main() -> None:
         '"timing_s/gen": "gen_s"',
         '"timing_s/old_log_prob": "oldlp_s"',
         '"response_length/mean": "resp_tok"',
+        '"self_distillation/reliability_gate_compute_fraction": "gate_compute"',
+        '"timing_s/ema_teacher_update": "ema_s"',
         "read_jsonl_from",
     ]:
         require_snippet(watcher_path, watcher, snippet)
@@ -259,6 +284,9 @@ def main() -> None:
         "old_log_prob_s",
         "response_length_mean",
         "response_length_clip_ratio",
+        "sdpo_reliability_gate_compute_fraction",
+        "sdpo_reliability_gate_compute_token_fraction",
+        "ema_teacher_update_s",
         'data.get("timing_s/update_actor", "")',
     ]:
         require_snippet(summary_path, summary, snippet)

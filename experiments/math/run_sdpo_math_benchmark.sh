@@ -21,6 +21,19 @@ SEED="${SEED:-42}"
 VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-1}"
 HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"
+RELIABILITY_GATE_SPARSE_EXECUTION="${RELIABILITY_GATE_SPARSE_EXECUTION:-True}"
+SDPO_SPARSE_TARGET_EXECUTION="${SDPO_SPARSE_TARGET_EXECUTION:-True}"
+
+for boolean_name in RELIABILITY_GATE_SPARSE_EXECUTION SDPO_SPARSE_TARGET_EXECUTION; do
+  case "${!boolean_name}" in
+    True|False)
+      ;;
+    *)
+      echo "${boolean_name} must be True or False." >&2
+      exit 1
+      ;;
+  esac
+done
 
 case "${HARDWARE_PROFILE}" in
   a100|h100)
@@ -98,7 +111,8 @@ case "${MODEL_PATH}" in
     ;;
 esac
 
-export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH HARDWARE_PROFILE RELIABILITY_GATE_THRESHOLD ROLLOUT_TP ROLLOUT_QUANTIZATION
+export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH HARDWARE_PROFILE RELIABILITY_GATE_THRESHOLD
+export RELIABILITY_GATE_SPARSE_EXECUTION SDPO_SPARSE_TARGET_EXECUTION ROLLOUT_TP ROLLOUT_QUANTIZATION
 export TRAIN_MAX_SAMPLES VAL_MAX_SAMPLES SEED
 
 RUN_TAG="${RUN_TAG:-${PHASE}_${HARDWARE_PROFILE}_${RUN_PROFILE}_${TRAIN_STEPS}_$(date +%Y%m%d_%H%M%S)}"
@@ -115,6 +129,8 @@ sdpo_math_prepare_phase_run "${RUN_PROFILE}" "${LOG_DIR}"
 echo "phase=${PHASE} model=${MODEL_PATH} variants=${VARIANTS} dry_run=${DRY_RUN}"
 echo "hardware=${HARDWARE_PROFILE}"
 echo "reliability_gate_threshold=${RELIABILITY_GATE_THRESHOLD}"
+echo "reliability_gate_sparse_execution=${RELIABILITY_GATE_SPARSE_EXECUTION}"
+echo "sdpo_sparse_target_execution=${SDPO_SPARSE_TARGET_EXECUTION}"
 echo "steps=${TRAIN_STEPS} train_max=${TRAIN_MAX_SAMPLES} val_max=${VAL_MAX_SAMPLES} eval_freq=${EVAL_FREQ} save_freq=${SAVE_FREQ} seed=${SEED}"
 echo "exp_suffix=${EXP_SUFFIX}"
 echo "logs=${LOG_DIR}"
@@ -257,6 +273,7 @@ run_sdpo_variant() {
   local include_feedback=True
   local reliability=False
   local reliability_gate_threshold=0.0
+  local reliability_gate_sparse_execution=False
 
   case "${variant}" in
     sdpo_vanilla)
@@ -267,6 +284,7 @@ run_sdpo_variant() {
     sdpo_reliability_gate)
       reliability=True
       reliability_gate_threshold="${RELIABILITY_GATE_THRESHOLD}"
+      reliability_gate_sparse_execution="${RELIABILITY_GATE_SPARSE_EXECUTION}"
       ;;
     *)
       echo "Unknown SDPO variant=${variant}" >&2
@@ -291,8 +309,10 @@ run_sdpo_variant() {
       data.val_max_samples="${VAL_MAX_SAMPLES}" \
       actor_rollout_ref.actor.policy_loss.loss_mode=sdpo \
       actor_rollout_ref.actor.self_distillation.include_environment_feedback="${include_feedback}" \
+      actor_rollout_ref.actor.self_distillation.sparse_target_execution="${SDPO_SPARSE_TARGET_EXECUTION}" \
       actor_rollout_ref.actor.self_distillation.reliability_weighting="${reliability}" \
       actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}" \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution="${reliability_gate_sparse_execution}" \
       "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
       "${COMMON_OVERRIDES[@]}" \
       "$@"

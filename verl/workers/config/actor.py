@@ -58,6 +58,8 @@ class SelfDistillationConfig(BaseConfig):
         feedback_template (str): Template for formatting feedback section. Uses {feedback_raw} placeholder.
         include_environment_feedback (bool): Whether to include environment feedback in reprompting for wrong attempts.
         environment_feedback_only_without_solution (bool): If True, only use feedback when no solution is available (ignore feedback when solution exists).
+        sparse_target_execution (bool): Align active SDPO targets across data-parallel ranks and skip
+            student/teacher forwards for rows with zero SDPO loss.
         reliability_weighting (bool): Whether to weight SDPO targets by heuristic target reliability.
         reliability_min_weight (float): Lower bound for positive reliability weights.
         reliability_success_weight (float): Weight for samples with a successful peer demonstration.
@@ -66,6 +68,8 @@ class SelfDistillationConfig(BaseConfig):
         reliability_truncated_weight (float): Weight for truncated targets.
         reliability_gate_threshold (float): If positive, only samples with reliability weight greater
             than or equal to this threshold run the SDPO teacher forward.
+        reliability_gate_sparse_execution (bool): Align gated samples across data-parallel ranks and skip
+            student and teacher forwards for rows rejected on every rank.
         reprompt_template_feedback (str): Template for reprompting with feedback but no solution.
         reprompt_template_feedback_solution (str): Template for reprompting with both feedback and solution.
     """
@@ -98,6 +102,7 @@ class SelfDistillationConfig(BaseConfig):
     )
     include_environment_feedback: bool = False
     environment_feedback_only_without_solution: bool = False
+    sparse_target_execution: bool = True
     reliability_weighting: bool = False
     reliability_min_weight: float = 0.0
     reliability_success_weight: float = 1.0
@@ -105,6 +110,7 @@ class SelfDistillationConfig(BaseConfig):
     reliability_format_feedback_weight: float = 0.2
     reliability_truncated_weight: float = 0.0
     reliability_gate_threshold: float = 0.0
+    reliability_gate_sparse_execution: bool = True
 
     def __post_init__(self):
         if not 0.0 <= self.alpha <= 1.0:
@@ -134,8 +140,8 @@ class SelfDistillationConfig(BaseConfig):
             "reliability_gate_threshold": self.reliability_gate_threshold,
         }
         for field_name, value in reliability_fields.items():
-            if value < 0:
-                raise ValueError(f"self_distillation.{field_name} must be non-negative, got {value}")
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"self_distillation.{field_name} must be in [0,1], got {value}")
         if self.reliability_gate_threshold > 0 and not self.reliability_weighting:
             raise ValueError(
                 "self_distillation.reliability_gate_threshold requires "

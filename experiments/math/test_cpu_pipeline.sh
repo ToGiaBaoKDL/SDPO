@@ -22,7 +22,6 @@ bash -n \
   experiments/math/check_phase_report_ready.py \
   experiments/math/inspect_phase_logs.py \
   experiments/math/summarize_phase_results.py \
-  experiments/math/update_prepared_prompts.py \
   experiments/math/verify_hf_models.py \
   experiments/math/watch_phase_progress.py \
   experiments/math/write_phase_manifest.py \
@@ -55,9 +54,11 @@ for snippet in [
     'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
     'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
     'RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"',
+    'RELIABILITY_GATE_SPARSE_EXECUTION="${RELIABILITY_GATE_SPARSE_EXECUTION:-True}"',
     "ROLLOUT_TP=2",
     "ROLLOUT_QUANTIZATION=null",
     'actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}"',
+    'actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution="${reliability_gate_sparse_execution}"',
 ]:
     assert snippet in runner, f"benchmark runner missing gate/default logic: {snippet}"
 
@@ -69,6 +70,7 @@ for snippet in [
     "RELIABILITY_GATE_THRESHOLD",
     "ROLLOUT_QUANTIZATION",
     "ROLLOUT_TP",
+    "reliability_gate_sparse_execution",
 ]:
     assert snippet in manifest, f"manifest writer missing gate hyperparameter: {snippet}"
 
@@ -90,8 +92,17 @@ for snippet in [
     'self._progress_heartbeat("step_start")',
     'self._progress_heartbeat("gen_start")',
     'self._progress_heartbeat("actor_update_done")',
+    "build_reliability_gate_schedule",
+    "_prepare_sparse_self_distillation_actor_batch",
+    "self_distillation_sparse_compute_mask",
 ]:
     assert snippet in trainer, f"trainer missing progress heartbeat: {snippet}"
+
+actor_worker = Path("verl/workers/actor/dp_actor.py").read_text(encoding="utf-8")
+fsdp_worker = Path("verl/workers/fsdp_workers.py").read_text(encoding="utf-8")
+for snippet in ["initialize_ema_teacher", "_trainable_teacher_parameter_pairs", "ema_teacher_update"]:
+    assert snippet in actor_worker, f"actor worker missing optimized EMA logic: {snippet}"
+assert "self.actor.initialize_ema_teacher()" in fsdp_worker
 
 watcher = Path("experiments/math/watch_phase_progress.py").read_text(encoding="utf-8")
 for snippet in [
@@ -101,6 +112,8 @@ for snippet in [
     '"timing_s/gen": "gen_s"',
     '"timing_s/old_log_prob": "oldlp_s"',
     '"response_length/mean": "resp_tok"',
+    '"self_distillation/reliability_gate_compute_fraction": "gate_compute"',
+    '"timing_s/ema_teacher_update": "ema_s"',
     "read_jsonl_from",
 ]:
     assert snippet in watcher, f"watcher missing progress heartbeat support: {snippet}"
@@ -111,6 +124,9 @@ for snippet in [
     "old_log_prob_s",
     "response_length_mean",
     "response_length_clip_ratio",
+    "sdpo_reliability_gate_compute_fraction",
+    "sdpo_reliability_gate_compute_token_fraction",
+    "ema_teacher_update_s",
     'data.get("timing_s/update_actor", "")',
     "sorted(VARIANTS, key=len, reverse=True)",
 ]:
@@ -123,6 +139,22 @@ summary_mod = importlib.util.module_from_spec(summary_spec)
 summary_spec.loader.exec_module(summary_mod)
 assert summary_mod.infer_variant(Path("sdpo_reliability_gate_phase_seed42.jsonl")) == "sdpo_reliability_gate"
 assert summary_mod.infer_variant(Path("sdpo_reliability_phase_seed42.jsonl")) == "sdpo_reliability"
+
+if importlib.util.find_spec("torch") and importlib.util.find_spec("ray"):
+    import torch
+
+    from verl.trainer.ppo.ray_trainer import build_reliability_gate_schedule
+
+    target = torch.tensor([True, False, True, False, True, False, False, False])
+    permutation, compute_mask, selected_per_rank = build_reliability_gate_schedule(target, dp_size=2)
+    aligned_target = target[permutation]
+    assert selected_per_rank == [2, 1]
+    assert compute_mask.tolist() == [True, True, False, False, True, True, False, False]
+    assert not torch.any(aligned_target & ~compute_mask)
+    assert sorted(permutation.tolist()) == list(range(len(target)))
+    print("reliability_gate_schedule_ok")
+else:
+    print("reliability_gate_schedule_skipped: torch/ray unavailable")
 
 download_script = Path("experiments/math/download_phase_artifacts.py").read_text(encoding="utf-8")
 for snippet in [
@@ -208,6 +240,9 @@ assert cfg["actor_rollout_ref"]["rollout"]["val_kwargs"]["temperature"] == 0.01
 assert cfg["actor_rollout_ref"]["model"]["lora_rank"] > 0
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_weighting"] is False
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_threshold"] == 0.0
+assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_sparse_execution"] is True
+assert cfg["actor_rollout_ref"]["actor"]["use_dynamic_bsz"] is False
+assert cfg["actor_rollout_ref"]["actor"]["shuffle"] is False
 assert cfg["trainer"]["n_gpus_per_node"] == 2
 assert cfg["reward_manager"]["name"] == "naive"
 print("config ok")

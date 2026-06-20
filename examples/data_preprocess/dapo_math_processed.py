@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import random
 import re
 import statistics
+import tempfile
 import unicodedata
 from collections import Counter
 from importlib.metadata import PackageNotFoundError, version
@@ -54,6 +56,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional local source parquet path. If set, avoids loading from Hugging Face.",
     )
     parser.add_argument("--local_save_dir", default="data/dapo_math_en")
+    parser.add_argument(
+        "--update_prepared_dir",
+        default=None,
+        help="Update prompt text in existing train/val parquet files, then exit.",
+    )
     parser.add_argument("--report_dir", default="reports")
     parser.add_argument("--validation_size", type=int, default=512)
     parser.add_argument("--seed", type=int, default=42)
@@ -329,6 +336,45 @@ def format_prompt(problem: str, prompt_suffix: str) -> str:
     return f"{problem}\n\n{prompt_suffix}"
 
 
+def update_prepared_prompts(data_dir: Path, prompt_suffix: str) -> dict[str, dict[str, int]]:
+    results: dict[str, dict[str, int]] = {}
+    for split in ("train", "val"):
+        path = data_dir / f"{split}.parquet"
+        if not path.exists():
+            raise FileNotFoundError(path)
+
+        table = pq.read_table(path)
+        rows = table.to_pylist()
+        changed = 0
+        for row in rows:
+            raw_prompt = str((row.get("extra_info") or {}).get("raw_prompt") or "").strip()
+            if not raw_prompt:
+                raise ValueError(f"{path} contains a row without extra_info.raw_prompt")
+            prompt = [{"role": "user", "content": format_prompt(raw_prompt, prompt_suffix)}]
+            if row.get("prompt") != prompt:
+                row["prompt"] = prompt
+                changed += 1
+
+        if changed:
+            updated_table = pa.Table.from_pylist(rows, schema=table.schema)
+            with tempfile.NamedTemporaryFile(dir=data_dir, suffix=".parquet", delete=False) as handle:
+                temporary_path = Path(handle.name)
+            try:
+                pq.write_table(updated_table, temporary_path, compression="snappy")
+                os.replace(temporary_path, path)
+            finally:
+                temporary_path.unlink(missing_ok=True)
+        results[split] = {"rows": len(rows), "changed": changed}
+
+    metadata = {
+        "style": "concise_v1",
+        "prompt_suffix": prompt_suffix,
+        "splits": results,
+    }
+    write_json(data_dir / "prompt_style.json", metadata)
+    return results
+
+
 def get_original_index(row: dict[str, Any], fallback_idx: int) -> str:
     extra_info = row.get("extra_info") or {}
     index = extra_info.get("index", fallback_idx)
@@ -590,6 +636,11 @@ def build_decontamination_report(
 
 def main() -> None:
     args = parse_args()
+    if args.update_prepared_dir:
+        results = update_prepared_prompts(Path(args.update_prepared_dir), args.prompt_suffix)
+        print("prepared_prompt_ok:", {"style": "concise_v1", "splits": results})
+        return
+
     save_dir = Path(args.local_save_dir)
     report_dir = Path(args.report_dir)
     save_dir.mkdir(parents=True, exist_ok=True)

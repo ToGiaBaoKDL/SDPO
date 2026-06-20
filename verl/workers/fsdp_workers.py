@@ -878,6 +878,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                         )
                     else:
                         self.actor.teacher_module = self.ref_module_fsdp
+                        self.actor.initialize_ema_teacher()
 
         if self._is_actor:
             self.flops_counter = FlopsCounter(self.actor_model_config)

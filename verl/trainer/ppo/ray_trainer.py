@@ -281,6 +281,54 @@ def compute_advantage(
     return data
 
 
+def build_reliability_gate_schedule(
+    target_mask: torch.Tensor,
+    dp_size: int,
+) -> tuple[torch.Tensor, torch.Tensor, list[int]]:
+    """Align selected targets across equal data-parallel shards.
+
+    Selected rows are placed first in every shard. The returned compute mask is
+    identical across shards and keeps a row whenever any rank has a selected
+    target at that local position.
+    """
+    if target_mask.ndim != 1 or target_mask.dtype != torch.bool:
+        raise ValueError("target_mask must be a one-dimensional boolean tensor")
+    if dp_size < 1 or target_mask.numel() % dp_size != 0:
+        raise ValueError(f"gate batch size {target_mask.numel()} must be divisible by dp_size={dp_size}")
+
+    batch_size = target_mask.numel()
+    local_batch_size = batch_size // dp_size
+    selected = torch.nonzero(target_mask, as_tuple=False).flatten()
+    rejected = torch.nonzero(~target_mask, as_tuple=False).flatten()
+    selected_count = selected.numel()
+    selected_per_rank = [selected_count // dp_size + int(rank < selected_count % dp_size) for rank in range(dp_size)]
+    if any(count > local_batch_size for count in selected_per_rank):
+        raise ValueError("gate scheduler assigned more selected rows than a data-parallel shard can hold")
+
+    permutation_parts = []
+    selected_offset = 0
+    rejected_offset = 0
+    for count in selected_per_rank:
+        rejected_count = local_batch_size - count
+        permutation_parts.extend(
+            [
+                selected[selected_offset : selected_offset + count],
+                rejected[rejected_offset : rejected_offset + rejected_count],
+            ]
+        )
+        selected_offset += count
+        rejected_offset += rejected_count
+
+    permutation = torch.cat(permutation_parts) if permutation_parts else torch.empty(0, dtype=torch.long)
+    max_selected_per_rank = max(selected_per_rank, default=0)
+    local_compute_mask = torch.arange(local_batch_size, device=target_mask.device) < max_selected_per_rank
+    compute_mask = local_compute_mask.repeat(dp_size)
+
+    if permutation.numel() != batch_size or torch.unique(permutation).numel() != batch_size:
+        raise RuntimeError("reliability gate schedule is not a valid permutation")
+    return permutation, compute_mask, selected_per_rank
+
+
 class RayPPOTrainer:
     """Distributed PPO trainer using Ray for scalable reinforcement learning.
 
@@ -696,8 +744,8 @@ class RayPPOTrainer:
     ) -> Optional[str]:
         uid = uids[idx]
         solution_idxs = success_by_uid[uid]
-        if dont_reprompt_on_self_success:
-            solution_idxs = [j for j in solution_idxs if j != idx]
+        if dont_reprompt_on_self_success and idx in solution_idxs:
+            return None
         if len(solution_idxs) == 0:
             return None
         solution_idx = solution_idxs[0]  # taking the first successful demonstration effectively selects a random one
@@ -727,6 +775,114 @@ class RayPPOTrainer:
         if values is None or idx >= len(values):
             return default
         return values[idx]
+
+    def _prepare_sparse_self_distillation_actor_batch(
+        self, batch: DataProto
+    ) -> tuple[DataProto, dict[str, float]]:
+        self_distillation_cfg = self.config.actor_rollout_ref.actor.get("self_distillation", None)
+        loss_mode = self.config.actor_rollout_ref.actor.policy_loss.get("loss_mode", "vanilla")
+        if self_distillation_cfg is None or loss_mode != "sdpo":
+            return batch, {}
+
+        threshold = float(self_distillation_cfg.get("reliability_gate_threshold", 0.0) or 0.0)
+        if "self_distillation_mask" not in batch.batch:
+            raise ValueError("sparse SDPO execution requires a self-distillation target mask")
+        if self.config.actor_rollout_ref.actor.get("shuffle", False):
+            raise ValueError("sparse SDPO execution requires actor.shuffle=False")
+
+        distillation_mask = batch.batch["self_distillation_mask"] > 0
+        reliability_weighting = bool(self_distillation_cfg.get("reliability_weighting", False))
+        weight = batch.batch.get("self_distillation_weight")
+        if threshold > 0:
+            if weight is None:
+                raise ValueError("reliability-gated SDPO requires reliability weights")
+            target_mask = (weight >= threshold) & distillation_mask
+            sparse_execution = bool(self_distillation_cfg.get("reliability_gate_sparse_execution", True))
+        elif reliability_weighting:
+            if weight is None:
+                raise ValueError("reliability-weighted SDPO requires reliability weights")
+            target_mask = (weight > 0) & distillation_mask
+            sparse_execution = bool(self_distillation_cfg.get("sparse_target_execution", True))
+        else:
+            target_mask = distillation_mask
+            sparse_execution = bool(self_distillation_cfg.get("sparse_target_execution", True))
+
+        if sparse_execution:
+            if self.config.actor_rollout_ref.actor.get("use_dynamic_bsz", False):
+                raise ValueError("sparse SDPO execution requires actor.use_dynamic_bsz=False")
+            world_size = int(self.actor_rollout_wg.world_size)
+            sequence_parallel_size = int(
+                self.config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1)
+            )
+            if world_size % sequence_parallel_size != 0:
+                raise ValueError(
+                    f"actor world_size={world_size} must be divisible by sequence parallel size={sequence_parallel_size}"
+                )
+            dp_size = world_size // sequence_parallel_size
+            permutation, compute_mask, selected_per_rank = build_reliability_gate_schedule(target_mask, dp_size)
+            actor_batch = batch[permutation]
+            target_mask = target_mask[permutation]
+        else:
+            actor_batch = batch
+            compute_mask = torch.ones_like(target_mask, dtype=torch.bool)
+            selected_per_rank = [int(target_mask.sum().item())]
+
+        batch_device = actor_batch.batch["self_distillation_mask"].device
+        compute_mask = compute_mask.to(device=batch_device)
+        target_mask = target_mask.to(device=batch_device)
+        if torch.any(target_mask & ~compute_mask):
+            raise RuntimeError("reliability gate schedule dropped a selected target")
+        actor_batch.batch["self_distillation_sparse_compute_mask"] = compute_mask
+
+        teacher_attention = actor_batch.batch["teacher_attention_mask"].float()
+        response_mask = actor_batch.batch["response_mask"].float()
+        target_teacher_tokens = (teacher_attention * target_mask.unsqueeze(1)).sum()
+        compute_teacher_tokens = (teacher_attention * compute_mask.unsqueeze(1)).sum()
+        total_teacher_tokens = teacher_attention.sum().clamp(min=1.0)
+        target_response_tokens = (response_mask * target_mask.unsqueeze(1)).sum()
+        compute_response_tokens = (response_mask * compute_mask.unsqueeze(1)).sum()
+        total_response_tokens = response_mask.sum().clamp(min=1.0)
+
+        metrics = {
+            "self_distillation/sparse_execution": float(sparse_execution),
+            "self_distillation/sparse_target_fraction": target_mask.float().mean().item(),
+            "self_distillation/sparse_compute_fraction": compute_mask.float().mean().item(),
+            "self_distillation/sparse_alignment_overhead_fraction": (
+                compute_mask.float().mean() - target_mask.float().mean()
+            ).item(),
+            "self_distillation/sparse_target_teacher_token_fraction": (
+                target_teacher_tokens / total_teacher_tokens
+            ).item(),
+            "self_distillation/sparse_compute_teacher_token_fraction": (
+                compute_teacher_tokens / total_teacher_tokens
+            ).item(),
+            "self_distillation/sparse_target_response_token_fraction": (
+                target_response_tokens / total_response_tokens
+            ).item(),
+            "self_distillation/sparse_compute_response_token_fraction": (
+                compute_response_tokens / total_response_tokens
+            ).item(),
+            "self_distillation/sparse_max_targets_per_rank": float(max(selected_per_rank, default=0)),
+        }
+        if threshold > 0:
+            metrics.update(
+                {
+                    "self_distillation/reliability_gate_sparse_execution": float(sparse_execution),
+                    "self_distillation/reliability_gate_target_fraction": metrics[
+                        "self_distillation/sparse_target_fraction"
+                    ],
+                    "self_distillation/reliability_gate_compute_fraction": metrics[
+                        "self_distillation/sparse_compute_fraction"
+                    ],
+                    "self_distillation/reliability_gate_alignment_overhead_fraction": metrics[
+                        "self_distillation/sparse_alignment_overhead_fraction"
+                    ],
+                    "self_distillation/reliability_gate_compute_teacher_token_fraction": metrics[
+                        "self_distillation/sparse_compute_teacher_token_fraction"
+                    ],
+                }
+            )
+        return actor_batch, metrics
 
     def _compute_self_distillation_weights(
         self,
@@ -779,7 +935,7 @@ class RayPPOTrainer:
         metrics = {
             "self_distillation/reliability_weight_mean": weight_tensor.mean().item() if len(weights) > 0 else 0.0,
             "self_distillation/reliability_weight_nonzero_fraction": nonzero.float().mean().item() if len(weights) > 0 else 0.0,
-            "self_distillation/reliability_success_weight_fraction": success_count / batch_size,
+            "self_distillation/reliability_peer_solution_weight_fraction": success_count / batch_size,
             "self_distillation/reliability_safe_feedback_weight_fraction": safe_feedback_count / batch_size,
             "self_distillation/reliability_format_feedback_weight_fraction": format_feedback_count / batch_size,
             "self_distillation/reliability_truncated_weight_fraction": truncated_count / batch_size,
@@ -922,9 +1078,13 @@ class RayPPOTrainer:
         num_with_feedback_available = sum(1 for f in feedback_list if f is not None)
         num_with_feedback_used = sum(1 for f in feedback_used if f)
         num_with_solution = sum(1 for s in solution_strs if s is not None)
+        num_self_success = sum(
+            1 for i, uid in enumerate(batch.non_tensor_batch["uid"]) if i in success_by_uid[uid]
+        )
         metrics = {
             "self_distillation/success_group_fraction": len([uid for uid in uids if len(success_by_uid[uid]) > 0]) / len(uids),
-            "self_distillation/success_sample_fraction": num_with_solution / batch_size,
+            "self_distillation/self_success_sample_fraction": num_self_success / batch_size,
+            "self_distillation/peer_solution_sample_fraction": num_with_solution / batch_size,
             "self_distillation/feedback_available_fraction": num_with_feedback_available / batch_size,
             "self_distillation/feedback_used_fraction": num_with_feedback_used / batch_size,
             "self_distillation/reprompt_sample_fraction": self_distillation_mask.float().mean().item(),
@@ -2006,7 +2166,11 @@ class RayPPOTrainer:
                         # update actor
                         with marked_timer("update_actor", timing_raw, color="red"):
                             self._progress_heartbeat("actor_update_start")
-                            actor_output = self._update_actor(batch)
+                            actor_batch, sparse_execution_metrics = (
+                                self._prepare_sparse_self_distillation_actor_batch(batch)
+                            )
+                            metrics.update(sparse_execution_metrics)
+                            actor_output = self._update_actor(actor_batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)
                         self._progress_heartbeat("actor_update_done")

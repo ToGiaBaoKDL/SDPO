@@ -66,6 +66,12 @@ def main() -> None:
     require(manifest.get("config_name") == "sdpo_math_a100", f"unexpected config_name: {manifest.get('config_name')}")
     require(manifest.get("profile_settings"), "manifest missing profile_settings")
     require(manifest.get("effective_rollouts_per_step"), "manifest missing effective_rollouts_per_step")
+    for variant in {"sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"}:
+        variant_cfg = manifest.get("variant_hyperparameters", {}).get(variant, {})
+        require(
+            variant_cfg.get("sparse_target_execution") is True,
+            f"manifest missing {variant} sparse_target_execution=True",
+        )
     reliability_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability", {})
     require(
         reliability_cfg.get("reliability_weighting") is True,
@@ -83,6 +89,10 @@ def main() -> None:
     require(
         gate_cfg.get("reliability_gate_threshold") not in (None, ""),
         "manifest missing sdpo_reliability_gate reliability_gate_threshold",
+    )
+    require(
+        gate_cfg.get("reliability_gate_sparse_execution") is True,
+        "manifest missing sdpo_reliability_gate sparse execution",
     )
     if args.expect_phase:
         require(manifest.get("phase") == args.expect_phase, f"unexpected phase: {manifest.get('phase')}")
@@ -115,6 +125,14 @@ def main() -> None:
             require(
                 row.get("sdpo_reliability_gate_fraction", "") != "",
                 "sdpo_reliability_gate missing gate fraction metric",
+            )
+            require(
+                row.get("sdpo_reliability_gate_compute_fraction", "") != "",
+                "sdpo_reliability_gate missing gate compute fraction metric",
+            )
+            require(
+                row.get("sdpo_reliability_gate_compute_token_fraction", "") != "",
+                "sdpo_reliability_gate missing gate compute token fraction metric",
             )
 
         validation_dir = args.log_dir / "validation" / f"{variant}_{manifest['exp_suffix']}"

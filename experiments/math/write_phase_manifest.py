@@ -79,13 +79,26 @@ def main() -> None:
         "model": args.model,
         "variants": args.variants.split(),
         "variant_hyperparameters": {
+            "sdpo_vanilla": {
+                "sparse_target_execution": os.environ.get("SDPO_SPARSE_TARGET_EXECUTION", "True").lower()
+                == "true",
+                "reliability_weighting": False,
+            },
             "sdpo_reliability": {
                 "reliability_gate_threshold": "0.0",
                 "reliability_weighting": True,
+                "sparse_target_execution": os.environ.get("SDPO_SPARSE_TARGET_EXECUTION", "True").lower()
+                == "true",
             },
             "sdpo_reliability_gate": {
                 "reliability_gate_threshold": os.environ.get("RELIABILITY_GATE_THRESHOLD", "0.4"),
                 "reliability_weighting": True,
+                "reliability_gate_sparse_execution": os.environ.get(
+                    "RELIABILITY_GATE_SPARSE_EXECUTION", "True"
+                ).lower()
+                == "true",
+                "sparse_target_execution": os.environ.get("SDPO_SPARSE_TARGET_EXECUTION", "True").lower()
+                == "true",
             }
         },
         "train_steps": args.train_steps,

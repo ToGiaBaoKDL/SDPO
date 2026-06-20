@@ -48,6 +48,8 @@ actor_rollout_ref:
   actor:
     ppo_mini_batch_size: 24
     ppo_micro_batch_size_per_gpu: 1
+    use_dynamic_bsz: False
+    shuffle: False
     ppo_max_token_len_per_gpu: ${actor_max_token_len}
     clip_ratio_high: 0.28
     use_kl_loss: False
@@ -73,6 +75,7 @@ actor_rollout_ref:
       remove_thinking_from_demonstration: True
       include_environment_feedback: False
       environment_feedback_only_without_solution: True
+      sparse_target_execution: True
       reliability_weighting: False
       reliability_min_weight: 0.0
       reliability_success_weight: 1.0
@@ -80,6 +83,7 @@ actor_rollout_ref:
       reliability_format_feedback_weight: 0.2
       reliability_truncated_weight: 0.0
       reliability_gate_threshold: 0.0
+      reliability_gate_sparse_execution: True
       is_clip: 2.0
 
   ref:

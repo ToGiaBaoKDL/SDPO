@@ -194,7 +194,8 @@ if [[ "${PREPARE_DATA}" == "1" && ! -f data/dapo_math_en/train.parquet ]]; then
 fi
 
 if [[ "${PREPARE_DATA}" == "1" ]]; then
-  python experiments/math/update_prepared_prompts.py --data-dir data/dapo_math_en
+  python examples/data_preprocess/dapo_math_processed.py \
+    --update_prepared_dir data/dapo_math_en
 fi
 
 if [[ "${RUN_CPU_CHECK}" == "1" ]]; then

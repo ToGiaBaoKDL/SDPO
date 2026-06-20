@@ -29,6 +29,8 @@ SUMMARY_COLUMNS = [
     "sdpo_reliability_weight_mean",
     "sdpo_reliability_gate_threshold",
     "sdpo_reliability_gate_fraction",
+    "sdpo_reliability_gate_compute_fraction",
+    "sdpo_reliability_gate_compute_token_fraction",
     "actor_pg_loss",
     "actor_grad_norm",
     "throughput_tokens_per_s",
@@ -38,6 +40,7 @@ SUMMARY_COLUMNS = [
     "gen_s",
     "old_log_prob_s",
     "update_actor_s",
+    "ema_teacher_update_s",
     "adv_s",
     "metric_file",
 ]
@@ -161,6 +164,12 @@ def summarize_metric_file(path: Path) -> dict[str, Any]:
         "sdpo_reliability_weight_mean": data.get("self_distillation/reliability_weight_mean", ""),
         "sdpo_reliability_gate_threshold": data.get("self_distillation/reliability_gate_threshold", ""),
         "sdpo_reliability_gate_fraction": data.get("self_distillation/reliability_gate_target_fraction", ""),
+        "sdpo_reliability_gate_compute_fraction": data.get(
+            "self_distillation/reliability_gate_compute_fraction", ""
+        ),
+        "sdpo_reliability_gate_compute_token_fraction": data.get(
+            "self_distillation/reliability_gate_compute_teacher_token_fraction", ""
+        ),
         "actor_pg_loss": data.get("actor/pg_loss", ""),
         "actor_grad_norm": data.get("actor/grad_norm", ""),
         "throughput_tokens_per_s": data.get("perf/throughput", ""),
@@ -170,6 +179,7 @@ def summarize_metric_file(path: Path) -> dict[str, Any]:
         "gen_s": data.get("timing_s/gen", ""),
         "old_log_prob_s": data.get("timing_s/old_log_prob", ""),
         "update_actor_s": data.get("timing_s/update_actor", ""),
+        "ema_teacher_update_s": data.get("timing_s/ema_teacher_update", ""),
         "adv_s": data.get("timing_s/adv", ""),
         "metric_file": str(path),
     }
@@ -196,6 +206,12 @@ def summarize_console_log(path: Path) -> dict[str, Any]:
         "sdpo_reliability_weight_mean": data.get("self_distillation/reliability_weight_mean", ""),
         "sdpo_reliability_gate_threshold": data.get("self_distillation/reliability_gate_threshold", ""),
         "sdpo_reliability_gate_fraction": data.get("self_distillation/reliability_gate_target_fraction", ""),
+        "sdpo_reliability_gate_compute_fraction": data.get(
+            "self_distillation/reliability_gate_compute_fraction", ""
+        ),
+        "sdpo_reliability_gate_compute_token_fraction": data.get(
+            "self_distillation/reliability_gate_compute_teacher_token_fraction", ""
+        ),
         "actor_pg_loss": data.get("actor/pg_loss", ""),
         "actor_grad_norm": data.get("actor/grad_norm", ""),
         "throughput_tokens_per_s": data.get("perf/throughput", ""),
@@ -205,6 +221,7 @@ def summarize_console_log(path: Path) -> dict[str, Any]:
         "gen_s": data.get("timing_s/gen", ""),
         "old_log_prob_s": data.get("timing_s/old_log_prob", ""),
         "update_actor_s": data.get("timing_s/update_actor", ""),
+        "ema_teacher_update_s": data.get("timing_s/ema_teacher_update", ""),
         "adv_s": data.get("timing_s/adv", ""),
         "metric_file": str(path),
     }
