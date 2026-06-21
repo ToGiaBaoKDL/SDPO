@@ -821,9 +821,6 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
             if getattr(self, "tokenizer", None) is not None:
                 self.actor.tokenizer = self.tokenizer
 
-        if self._is_rollout:
-            self._build_rollout(trust_remote_code=self.config.model.get("trust_remote_code", False))
-
         if self._is_ref:
             ref_model_path = self.config.model.path
             ref_model = self.config.ref.get("model", None)
@@ -879,6 +876,11 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                     else:
                         self.actor.teacher_module = self.ref_module_fsdp
                         self.actor.initialize_ema_teacher()
+
+        # SDPO colocates a CPU-offloaded reference teacher with vLLM. Build and
+        # offload the teacher before vLLM reserves GPU memory for its KV cache.
+        if self._is_rollout:
+            self._build_rollout(trust_remote_code=self.config.model.get("trust_remote_code", False))
 
         if self._is_actor:
             self.flops_counter = FlopsCounter(self.actor_model_config)

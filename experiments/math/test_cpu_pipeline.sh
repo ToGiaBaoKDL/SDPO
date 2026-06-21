@@ -106,6 +106,9 @@ fsdp_worker = Path("verl/workers/fsdp_workers.py").read_text(encoding="utf-8")
 for snippet in ["initialize_ema_teacher", "_trainable_teacher_parameter_pairs", "ema_teacher_update"]:
     assert snippet in actor_worker, f"actor worker missing optimized EMA logic: {snippet}"
 assert "self.actor.initialize_ema_teacher()" in fsdp_worker
+teacher_init = fsdp_worker.index("self.actor.initialize_ema_teacher()")
+rollout_init = fsdp_worker.index("self._build_rollout(", teacher_init)
+assert teacher_init < rollout_init, "SDPO teacher must initialize before vLLM reserves GPU memory"
 
 watcher = Path("experiments/math/watch_phase_progress.py").read_text(encoding="utf-8")
 for snippet in [

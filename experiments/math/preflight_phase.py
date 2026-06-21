@@ -249,6 +249,10 @@ def main() -> None:
     fsdp_worker_path = "verl/workers/fsdp_workers.py"
     fsdp_worker = Path(fsdp_worker_path).read_text(encoding="utf-8")
     require_snippet(fsdp_worker_path, fsdp_worker, "self.actor.initialize_ema_teacher()")
+    require_snippet(fsdp_worker_path, fsdp_worker, "offload the teacher before vLLM reserves GPU memory")
+    teacher_init = fsdp_worker.index("self.actor.initialize_ema_teacher()")
+    rollout_init = fsdp_worker.index("self._build_rollout(", teacher_init)
+    assert teacher_init < rollout_init, "SDPO teacher must be initialized before the colocated vLLM rollout"
 
     watcher_path = "experiments/math/watch_phase_progress.py"
     watcher = Path(watcher_path).read_text(encoding="utf-8")

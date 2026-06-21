@@ -212,6 +212,8 @@ run_with_log() {
       --variant-log "${LOG_DIR}/${exp_name}.log" \
       --since-epoch "${command_start_epoch}" || true
   fi
+  ray stop --force >/dev/null 2>&1 || true
+  sleep "${VARIANT_CLEANUP_WAIT_SECONDS:-3}"
   return "${command_status}"
 }
 
