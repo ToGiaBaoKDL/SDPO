@@ -15,6 +15,17 @@ STABLE_TRANSFORMERS_SPEC="${STABLE_TRANSFORMERS_SPEC:-transformers==4.57.1}"
 NUMPY_SPEC="${NUMPY_SPEC:-numpy==2.1.0}"
 SKIP_INSTALL_IF_READY="${SKIP_INSTALL_IF_READY:-1}"
 FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
+SETUP_STARTED_AT="${SECONDS}"
+STAGE_STARTED_AT="${SECONDS}"
+
+start_stage() {
+  STAGE_STARTED_AT="${SECONDS}"
+  echo "[setup] stage=$1 status=start"
+}
+
+finish_stage() {
+  echo "[setup] stage=$1 status=done elapsed_s=$((SECONDS - STAGE_STARTED_AT))"
+}
 
 ensure_uv() {
   if command -v uv >/dev/null 2>&1; then
@@ -67,9 +78,12 @@ echo "skip_install_if_ready=${SKIP_INSTALL_IF_READY}"
 echo "force_reinstall=${FORCE_REINSTALL}"
 echo "vllm_worker_multiproc_method=${VLLM_WORKER_MULTIPROC_METHOD}"
 
+start_stage uv
 ensure_uv
 echo "uv_version=$(uv --version)"
+finish_stage uv
 
+start_stage environment
 if [[ -x .venv/bin/python ]]; then
   EXISTING_PYTHON_VERSION="$(
     .venv/bin/python - <<'PY'
@@ -128,8 +142,13 @@ if [[ "${VENV_READY}" == "1" ]]; then
   echo "venv_ready=1 skip_dependency_install=1"
 else
   echo "venv_ready=0 installing_dependencies=1"
-  uv venv .venv --python "${SDPO_PYTHON_VERSION}"
+  if [[ ! -x .venv/bin/python ]]; then
+    uv venv .venv --python "${SDPO_PYTHON_VERSION}"
+  else
+    echo "venv_exists=1 repair_dependencies=1"
+  fi
 fi
+finish_stage environment
 
 unset SDPO_SKIP_VENV
 # shellcheck disable=SC1091
@@ -137,19 +156,20 @@ source "${SCRIPT_DIR}/math_env.sh"
 
 python --version
 if [[ "${VENV_READY}" != "1" ]]; then
-  uv pip install -q pyyaml pyarrow pandas datasets
-  uv pip install -q -e ".[vllm]"
-
-  echo "Installing stable Transformers ${STABLE_TRANSFORMERS_SPEC}"
-  uv pip install -q -U "${STABLE_TRANSFORMERS_SPEC}"
-  echo "Installing NumPy runtime pin ${NUMPY_SPEC}"
-  uv pip install -q -U "${NUMPY_SPEC}"
-
+  start_stage dependencies
+  INSTALL_SPECS=(pyyaml pyarrow pandas datasets "${STABLE_TRANSFORMERS_SPEC}" "${NUMPY_SPEC}")
   if [[ "${INSTALL_MATH_VERIFY}" == "1" ]]; then
-    uv pip install -q "math-verify[antlr4_9_3]==0.8.0"
+    INSTALL_SPECS+=("math-verify[antlr4_9_3]==0.8.0")
   fi
+  UV_REINSTALL_ARGS=()
+  if [[ "${FORCE_REINSTALL}" == "1" ]]; then
+    UV_REINSTALL_ARGS+=(--reinstall)
+  fi
+  uv pip install -e ".[vllm]" "${INSTALL_SPECS[@]}" "${UV_REINSTALL_ARGS[@]}"
+  finish_stage dependencies
 fi
 
+start_stage runtime_check
 python - <<'PY'
 import importlib.util
 import importlib.metadata as metadata
@@ -174,11 +194,15 @@ except Exception as exc:
     print("vllm_version_unavailable:", type(exc).__name__)
 print("math_verify_available:", int(importlib.util.find_spec("math_verify") is not None))
 PY
+finish_stage runtime_check
 
 if [[ "${VERIFY_HF_MODELS}" == "1" ]]; then
+  start_stage model_verification
   python experiments/math/verify_hf_models.py --models "${SMOKE_MODEL_PATH}" "${SCALE_MODEL_PATH}" "${THESIS_MODEL_PATH}"
+  finish_stage model_verification
 fi
 
+start_stage data
 if [[ "${PREPARE_DATA}" == "1" && ! -f data/dapo_math_en/train.parquet ]]; then
   python examples/data_preprocess/dapo_math_processed.py \
     --dataset_name open-r1/DAPO-Math-17k-Processed \
@@ -197,9 +221,12 @@ if [[ "${PREPARE_DATA}" == "1" ]]; then
   python examples/data_preprocess/dapo_math_processed.py \
     --update_prepared_dir data/dapo_math_en
 fi
+finish_stage data
 
 if [[ "${RUN_CPU_CHECK}" == "1" ]]; then
+  start_stage cpu_check
   PYTHON=.venv/bin/python bash experiments/math/test_cpu_pipeline.sh
+  finish_stage cpu_check
 fi
 
-echo "setup_ok"
+echo "setup_ok elapsed_s=$((SECONDS - SETUP_STARTED_AT))"

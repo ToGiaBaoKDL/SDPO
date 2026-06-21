@@ -206,7 +206,7 @@ for snippet in [
     'FORCE_REINSTALL="${FORCE_REINSTALL:-0}"',
     "ensure_uv",
     "uv venv .venv",
-    'uv pip install -q -e ".[vllm]"',
+    'uv pip install -e ".[vllm]"',
     "skip_dependency_install=1",
 ]:
     assert snippet in setup, f"setup script missing lightweight default: {snippet}"

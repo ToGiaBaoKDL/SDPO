@@ -105,6 +105,7 @@ export PHASE=scale_decision
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 export ROLLOUT_TP="${ROLLOUT_TP:-2}"
 export BATCHED_TOKENS="${BATCHED_TOKENS:-49152}"
+export GPU_UTIL="${GPU_UTIL:-0.72}"
 export MAX_NUM_SEQS=64
 export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
@@ -143,10 +144,10 @@ source experiments/math/math_env.sh
 
 export PHASE=thesis
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
-unset GPU_UTIL
 export MAX_NUM_SEQS=64
 export ROLLOUT_TP="${ROLLOUT_TP:-2}"
 export BATCHED_TOKENS="${BATCHED_TOKENS:-65536}"
+export GPU_UTIL="${GPU_UTIL:-0.72}"
 export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-32}"

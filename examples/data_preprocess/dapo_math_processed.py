@@ -40,6 +40,7 @@ DEFAULT_PROMPT_SUFFIX = (
     "calculations. End with exactly one final answer in \\boxed{}."
 )
 DEFAULT_DATA_SOURCE = "math_dapo"
+PROMPT_STYLE = "concise_v1"
 DEFAULT_EVAL_DATASETS = ("MathArena/aime_2025", "MathArena/paper_benchmark")
 EVAL_PROBLEM_FIELDS = ("problem", "prompt", "question", "description")
 
@@ -336,7 +337,25 @@ def format_prompt(problem: str, prompt_suffix: str) -> str:
     return f"{problem}\n\n{prompt_suffix}"
 
 
+def prepared_prompt_style_is_current(data_dir: Path, prompt_suffix: str) -> bool:
+    metadata_path = data_dir / "prompt_style.json"
+    parquet_missing = any(not (data_dir / f"{split}.parquet").exists() for split in ("train", "val"))
+    if not metadata_path.exists() or parquet_missing:
+        return False
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    return metadata.get("style") == PROMPT_STYLE and metadata.get("prompt_suffix") == prompt_suffix
+
+
 def update_prepared_prompts(data_dir: Path, prompt_suffix: str) -> dict[str, dict[str, int]]:
+    if prepared_prompt_style_is_current(data_dir, prompt_suffix):
+        return {
+            split: {"rows": pq.ParquetFile(data_dir / f"{split}.parquet").metadata.num_rows, "changed": 0}
+            for split in ("train", "val")
+        }
+
     results: dict[str, dict[str, int]] = {}
     for split in ("train", "val"):
         path = data_dir / f"{split}.parquet"
@@ -367,7 +386,7 @@ def update_prepared_prompts(data_dir: Path, prompt_suffix: str) -> dict[str, dic
         results[split] = {"rows": len(rows), "changed": changed}
 
     metadata = {
-        "style": "concise_v1",
+        "style": PROMPT_STYLE,
         "prompt_suffix": prompt_suffix,
         "splits": results,
     }
@@ -638,7 +657,7 @@ def main() -> None:
     args = parse_args()
     if args.update_prepared_dir:
         results = update_prepared_prompts(Path(args.update_prepared_dir), args.prompt_suffix)
-        print("prepared_prompt_ok:", {"style": "concise_v1", "splits": results})
+        print("prepared_prompt_ok:", {"style": PROMPT_STYLE, "splits": results})
         return
 
     save_dir = Path(args.local_save_dir)

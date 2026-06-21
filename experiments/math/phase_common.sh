@@ -25,9 +25,9 @@ sdpo_math_configure_profile() {
       MODEL_LEN=3072
       ACTOR_LEN=4096
       REPROMPT_LEN=2048
-      BATCHED_TOKENS="${BATCHED_TOKENS:-32768}"
+      BATCHED_TOKENS="${BATCHED_TOKENS:-49152}"
       MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
-      GPU_UTIL="${GPU_UTIL:-0.86}"
+      GPU_UTIL="${GPU_UTIL:-0.72}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     a100:balanced)
@@ -38,9 +38,9 @@ sdpo_math_configure_profile() {
       MODEL_LEN=4096
       ACTOR_LEN=6144
       REPROMPT_LEN=3072
-      BATCHED_TOKENS="${BATCHED_TOKENS:-49152}"
+      BATCHED_TOKENS="${BATCHED_TOKENS:-65536}"
       MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
-      GPU_UTIL="${GPU_UTIL:-0.80}"
+      GPU_UTIL="${GPU_UTIL:-0.72}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     a100:quality)
@@ -51,9 +51,9 @@ sdpo_math_configure_profile() {
       MODEL_LEN=6144
       ACTOR_LEN=8192
       REPROMPT_LEN=4096
-      BATCHED_TOKENS="${BATCHED_TOKENS:-65536}"
+      BATCHED_TOKENS="${BATCHED_TOKENS:-98304}"
       MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
-      GPU_UTIL="${GPU_UTIL:-0.76}"
+      GPU_UTIL="${GPU_UTIL:-0.70}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     h100:fast)

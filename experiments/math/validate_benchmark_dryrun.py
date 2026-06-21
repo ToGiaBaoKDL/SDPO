@@ -85,7 +85,7 @@ PROFILE_EXPECTATIONS = {
         "agent_workers": 32,
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
-        "gpu_util": "0.86",
+        "gpu_util": "0.72",
         "enforce_eager": "True",
     },
     ("a100", "balanced"): {
@@ -93,7 +93,7 @@ PROFILE_EXPECTATIONS = {
         "agent_workers": 32,
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
-        "gpu_util": "0.80",
+        "gpu_util": "0.72",
         "enforce_eager": "True",
     },
     ("a100", "quality"): {
@@ -101,7 +101,7 @@ PROFILE_EXPECTATIONS = {
         "agent_workers": 32,
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
-        "gpu_util": "0.76",
+        "gpu_util": "0.70",
         "enforce_eager": "True",
     },
     ("h100", "fast"): {
