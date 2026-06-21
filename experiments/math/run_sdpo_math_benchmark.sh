@@ -15,7 +15,7 @@ PHASE="${PHASE:-pilot}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 LOGGER="${LOGGER:-[\"console\"]}"
 CONFIG_NAME="${CONFIG_NAME:-sdpo_math_a100}"
-VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"
+VARIANTS="${VARIANTS:-}"
 DRY_RUN="${DRY_RUN:-0}"
 SEED="${SEED:-42}"
 VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-1}"
@@ -46,6 +46,7 @@ esac
 
 case "${PHASE}" in
   pilot)
+    DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate"
     RUN_PROFILE=fast
     MODEL_PATH="${MODEL_PATH:-${PILOT_MODEL_PATH:-Qwen/Qwen3-1.7B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-10}"
@@ -58,10 +59,11 @@ case "${PHASE}" in
     EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
     SAVE_FREQ="${SAVE_FREQ:--1}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
-    ROLLOUT_TP=2
+    ROLLOUT_TP="${ROLLOUT_TP:-2}"
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Pilot}"
     ;;
   scale_decision)
+    DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"
     RUN_PROFILE=fast
     MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-8B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-12}"
@@ -74,11 +76,12 @@ case "${PHASE}" in
     EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
     SAVE_FREQ="${SAVE_FREQ:--1}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
-    ROLLOUT_TP=2
+    ROLLOUT_TP="${ROLLOUT_TP:-2}"
     ROLLOUT_QUANTIZATION=null
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Scale-Decision}"
     ;;
   thesis)
+    DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"
     RUN_PROFILE=balanced
     MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-32}"
@@ -87,7 +90,7 @@ case "${PHASE}" in
     EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
     SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"
     VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
-    ROLLOUT_TP=2
+    ROLLOUT_TP="${ROLLOUT_TP:-2}"
     ROLLOUT_QUANTIZATION=null
     GROUP_NAME="${GROUP_NAME:-SDPO-Math-Thesis}"
     ;;
@@ -96,6 +99,8 @@ case "${PHASE}" in
     exit 1
     ;;
 esac
+
+VARIANTS="${VARIANTS:-${DEFAULT_VARIANTS}}"
 
 if [[ "${CONFIG_NAME}" != "sdpo_math_a100" ]]; then
   echo "Refusing CONFIG_NAME=${CONFIG_NAME}. SDPO-Math phases must use sdpo_math_a100." >&2

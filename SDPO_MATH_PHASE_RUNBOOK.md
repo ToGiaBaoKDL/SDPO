@@ -9,7 +9,8 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Python | 3.12 |
 | Models | Qwen3 1.7B / 8B |
 | Hardware | `a100` default, `h100` optional |
-| Variants | `base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate` |
+| Phase 2/4 variants | `base_rl sdpo_vanilla sdpo_reliability_gate` |
+| Optional variant | `sdpo_reliability` |
 | Rollout TP | 2 |
 | Rollout quantization | `null` for Phase 2/4 |
 | Max seqs | 64 |
@@ -23,11 +24,11 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Scale decision | `Qwen/Qwen3-8B` | `fast` | 12 | 256 | 64 |
 | Thesis | `Qwen/Qwen3-8B` | `balanced` | 32 | 1024 | 256 |
 
-| Profile | Train batch | Rollout n | Workers | Response | Model len |
-|---|---:|---:|---:|---:|---:|
-| `fast` | 32 | 2 | 32 | 1024 | 3072 |
-| `balanced` | 32 | 2 | 32 | 1536 | 4096 |
-| `quality` | 32 | 2 | 32 | 2048 | 6144 |
+| Profile | Train batch | Rollout n | Workers | Response | Model len | Batched tokens |
+|---|---:|---:|---:|---:|---:|---:|
+| `fast` | 32 | 2 | 32 | 1024 | 3072 | 49152 |
+| `balanced` | 32 | 2 | 32 | 1536 | 4096 | 65536 |
+| `quality` | 32 | 2 | 32 | 2048 | 6144 | 98304 |
 
 ## Setup
 
@@ -102,9 +103,11 @@ source experiments/math/math_env.sh
 
 export PHASE=scale_decision
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
+export ROLLOUT_TP="${ROLLOUT_TP:-2}"
+export BATCHED_TOKENS="${BATCHED_TOKENS:-49152}"
 export MAX_NUM_SEQS=64
 export ENFORCE_EAGER=True
-export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"
+export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-12}"
 export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"
 export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-64}"
@@ -142,9 +145,10 @@ export PHASE=thesis
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 unset GPU_UTIL
 export MAX_NUM_SEQS=64
-export ROLLOUT_TP=2
+export ROLLOUT_TP="${ROLLOUT_TP:-2}"
+export BATCHED_TOKENS="${BATCHED_TOKENS:-65536}"
 export ENFORCE_EAGER=True
-export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"
+export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-32}"
 export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"
 export EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
@@ -189,6 +193,7 @@ cat "$LOG_DIR/summary.md"
 | Probe | Setting |
 |---|---|
 | Fewer Ray agent actors | `export AGENT_WORKERS=16` |
+| Lower memory packing | `export BATCHED_TOKENS=49152` |
 | Smaller validation | `export VAL_MAX_SAMPLES=32` |
 | CUDA graph test | `export ENFORCE_EAGER=False` |
 | Shorter thesis | `export TRAIN_STEPS=16`, `export TRAIN_MAX_SAMPLES=512` |

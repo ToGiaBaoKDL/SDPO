@@ -10,8 +10,10 @@ import re
 from pathlib import Path
 
 
-REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"}
-TRAINED_VARIANTS = REQUIRED_VARIANTS
+REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability_gate"}
+OPTIONAL_VARIANTS = {"sdpo_reliability"}
+ALLOWED_VARIANTS = REQUIRED_VARIANTS | OPTIONAL_VARIANTS
+TRAINED_VARIANTS = ALLOWED_VARIANTS
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,27 +62,30 @@ def main() -> None:
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     project_root = Path(manifest.get("project_root") or ".")
-    require(set(manifest["variants"]) == REQUIRED_VARIANTS, f"unexpected variants in manifest: {manifest['variants']}")
+    manifest_variants = set(manifest["variants"])
+    require(REQUIRED_VARIANTS <= manifest_variants, f"manifest missing required variants: {manifest['variants']}")
+    require(manifest_variants <= ALLOWED_VARIANTS, f"unexpected variants in manifest: {manifest['variants']}")
     require(manifest["seed"] is not None, "manifest missing seed")
     require(manifest["model"], "manifest missing model")
     require(manifest.get("config_name") == "sdpo_math_a100", f"unexpected config_name: {manifest.get('config_name')}")
     require(manifest.get("profile_settings"), "manifest missing profile_settings")
     require(manifest.get("effective_rollouts_per_step"), "manifest missing effective_rollouts_per_step")
-    for variant in {"sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"}:
+    for variant in {"sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"} & manifest_variants:
         variant_cfg = manifest.get("variant_hyperparameters", {}).get(variant, {})
         require(
             variant_cfg.get("sparse_target_execution") is True,
             f"manifest missing {variant} sparse_target_execution=True",
         )
-    reliability_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability", {})
-    require(
-        reliability_cfg.get("reliability_weighting") is True,
-        "manifest missing sdpo_reliability reliability_weighting=True",
-    )
-    require(
-        str(reliability_cfg.get("reliability_gate_threshold")) == "0.0",
-        "manifest missing sdpo_reliability reliability_gate_threshold=0.0",
-    )
+    if "sdpo_reliability" in manifest_variants:
+        reliability_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability", {})
+        require(
+            reliability_cfg.get("reliability_weighting") is True,
+            "manifest missing sdpo_reliability reliability_weighting=True",
+        )
+        require(
+            str(reliability_cfg.get("reliability_gate_threshold")) == "0.0",
+            "manifest missing sdpo_reliability reliability_gate_threshold=0.0",
+        )
     gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
     require(
         gate_cfg.get("reliability_weighting") is True,
@@ -105,7 +110,7 @@ def main() -> None:
 
     rows = list(csv.DictReader(summary_path.open(encoding="utf-8")))
     variants = {row["variant"] for row in rows}
-    require(variants == REQUIRED_VARIANTS, f"summary variants mismatch: {variants}")
+    require(variants == manifest_variants, f"summary variants mismatch: {variants}")
 
     for row in rows:
         variant = row["variant"]
@@ -142,7 +147,7 @@ def main() -> None:
     if args.require_checkpoints:
         exp_suffix = manifest["exp_suffix"]
         expected_step = int(manifest["train_steps"])
-        for variant in TRAINED_VARIANTS:
+        for variant in manifest_variants & TRAINED_VARIANTS:
             ckpt_root = project_root / "checkpoints/sdpo_math" / f"{variant}_{exp_suffix}"
             require(ckpt_root.exists(), f"missing checkpoint root for {variant}: {ckpt_root}")
             latest_ckpt = latest_checkpoint_dir(ckpt_root)

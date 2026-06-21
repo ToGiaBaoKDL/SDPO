@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
@@ -15,9 +14,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from examples.data_preprocess.dapo_math_processed import DEFAULT_PROMPT_SUFFIX
-
-
-EXPECTED_VARIANTS = ["base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"]
 
 
 def require_snippet(path: str, text: str, snippet: str) -> None:
@@ -104,9 +100,9 @@ def main() -> None:
         "RESPONSE_LEN=1024",
         "RESPONSE_LEN=1536",
         "RESPONSE_LEN=2048",
-        "BATCHED_TOKENS=32768",
-        "BATCHED_TOKENS=49152",
-        "BATCHED_TOKENS=65536",
+        'BATCHED_TOKENS="${BATCHED_TOKENS:-32768}"',
+        'BATCHED_TOKENS="${BATCHED_TOKENS:-49152}"',
+        'BATCHED_TOKENS="${BATCHED_TOKENS:-65536}"',
         'MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"',
         'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
         'GPU_UTIL="${GPU_UTIL:-0.86}"',
@@ -159,18 +155,11 @@ def main() -> None:
 
     runner_path = "experiments/math/run_sdpo_math_benchmark.sh"
     runner = Path(runner_path).read_text(encoding="utf-8")
-    variant_match = re.search(r'^VARIANTS="\$\{VARIANTS:-(?P<variants>[^"]+)\}"', runner, re.MULTILINE)
-    if not variant_match:
-        raise AssertionError(f"{runner_path} is missing the VARIANTS default")
-    actual_variants = variant_match.group("variants").split()
-    if actual_variants != EXPECTED_VARIANTS:
-        raise AssertionError(
-            f"{runner_path} has stale benchmark variants: "
-            f"actual={actual_variants}, expected={EXPECTED_VARIANTS}. "
-            "Run git pull in /root/SDPO or copy the latest benchmark script."
-        )
-
     for snippet in [
+        'VARIANTS="${VARIANTS:-}"',
+        'DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate"',
+        'DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"',
+        'VARIANTS="${VARIANTS:-${DEFAULT_VARIANTS}}"',
         "scale_decision)",
         "thesis)",
         "HARDWARE_PROFILE",
@@ -180,7 +169,7 @@ def main() -> None:
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"',
         'TRAIN_STEPS="${TRAIN_STEPS:-32}"',
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
-        "ROLLOUT_TP=2",
+        'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
         "ROLLOUT_QUANTIZATION=null",
         'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
         'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
@@ -218,7 +207,8 @@ def main() -> None:
     report_ready_path = "experiments/math/check_phase_report_ready.py"
     report_ready = Path(report_ready_path).read_text(encoding="utf-8")
     for snippet in [
-        'REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"}',
+        'REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability_gate"}',
+        'OPTIONAL_VARIANTS = {"sdpo_reliability"}',
         "reliability_weighting",
         "sdpo_reliability",
         "sdpo_reliability_gate",

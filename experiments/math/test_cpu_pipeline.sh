@@ -46,7 +46,10 @@ math_env = Path("experiments/math/math_env.sh").read_text(encoding="utf-8")
 assert 'SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3-8B}"' in math_env
 assert 'MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-8B}}"' in runner
 for snippet in [
-    'VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate}"',
+    'VARIANTS="${VARIANTS:-}"',
+    'DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate"',
+    'DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"',
+    'VARIANTS="${VARIANTS:-${DEFAULT_VARIANTS}}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
     'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-32}"',
@@ -55,7 +58,7 @@ for snippet in [
     'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
     'RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"',
     'RELIABILITY_GATE_SPARSE_EXECUTION="${RELIABILITY_GATE_SPARSE_EXECUTION:-True}"',
-    "ROLLOUT_TP=2",
+    'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
     "ROLLOUT_QUANTIZATION=null",
     'actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}"',
     'actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution="${reliability_gate_sparse_execution}"',
@@ -379,7 +382,6 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=a100 \
 PHASE=scale_decision \
 TRAIN_STEPS=1 \
-VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_phase2_dryrun \
 EXP_SUFFIX=cpu_pipeline_phase2_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_phase2_dryrun" \
@@ -396,7 +398,6 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=a100 \
 PHASE=thesis \
 TRAIN_STEPS=1 \
-VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_thesis_dryrun \
 EXP_SUFFIX=cpu_pipeline_thesis_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_thesis_dryrun" \
