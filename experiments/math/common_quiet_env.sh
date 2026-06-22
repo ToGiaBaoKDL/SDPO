@@ -4,6 +4,7 @@
 # For raw repeated Ray worker logs while debugging, run with QUIET_LOGS=0.
 export QUIET_LOGS="${QUIET_LOGS:-1}"
 export VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"
+export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
 unset RAY_BACKEND_LOG_LEVEL
 
 if [[ "${QUIET_LOGS}" == "1" ]]; then

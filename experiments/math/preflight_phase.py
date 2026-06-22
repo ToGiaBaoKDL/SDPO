@@ -233,6 +233,10 @@ def main() -> None:
         "def _progress_heartbeat",
         "VERL_FILE_LOGGER_ROOT",
         ".progress.jsonl",
+        'self._progress_heartbeat("resource_pool_start")',
+        'self._progress_heartbeat("worker_spawn_start")',
+        'self._progress_heartbeat("actor_model_init_start")',
+        'self._progress_heartbeat("agent_loop_init_start")',
         'self._progress_heartbeat("step_start")',
         'self._progress_heartbeat("gen_start")',
         'self._progress_heartbeat("actor_update_done")',
@@ -241,6 +245,10 @@ def main() -> None:
         "self_distillation_sparse_compute_mask",
     ]:
         require_snippet(trainer_path, trainer, snippet)
+
+    quiet_env_path = "experiments/math/common_quiet_env.sh"
+    quiet_env = Path(quiet_env_path).read_text(encoding="utf-8")
+    require_snippet(quiet_env_path, quiet_env, 'PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"')
 
     actor_worker_path = "verl/workers/actor/dp_actor.py"
     actor_worker = Path(actor_worker_path).read_text(encoding="utf-8")

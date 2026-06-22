@@ -92,6 +92,10 @@ for snippet in [
     "def _progress_heartbeat",
     "VERL_FILE_LOGGER_ROOT",
     ".progress.jsonl",
+    'self._progress_heartbeat("resource_pool_start")',
+    'self._progress_heartbeat("worker_spawn_start")',
+    'self._progress_heartbeat("actor_model_init_start")',
+    'self._progress_heartbeat("agent_loop_init_start")',
     'self._progress_heartbeat("step_start")',
     'self._progress_heartbeat("gen_start")',
     'self._progress_heartbeat("actor_update_done")',
@@ -198,6 +202,7 @@ for snippet in [
 
 quiet_env = Path("experiments/math/common_quiet_env.sh").read_text(encoding="utf-8")
 assert 'VLLM_WORKER_MULTIPROC_METHOD="${VLLM_WORKER_MULTIPROC_METHOD:-spawn}"' in quiet_env
+assert 'PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"' in quiet_env
 assert "unset RAY_BACKEND_LOG_LEVEL" in quiet_env
 assert "export RAY_BACKEND_LOG_LEVEL" not in quiet_env
 

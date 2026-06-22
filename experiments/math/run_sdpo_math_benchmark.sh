@@ -185,7 +185,7 @@ run_with_log() {
     ray stop --force >/dev/null 2>&1 || true
     return 130
   }
-  if [[ "${PROGRESS_WATCH:-1}" == "1" && "${LOGGER}" == '["file"]' ]]; then
+  if [[ "${PROGRESS_WATCH:-1}" == "1" ]]; then
     python3 "${SCRIPT_DIR}/watch_phase_progress.py" \
       --log-dir "${LOG_DIR}" \
       --experiment-name "${exp_name}" \

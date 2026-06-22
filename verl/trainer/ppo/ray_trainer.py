@@ -1304,7 +1304,9 @@ class RayPPOTrainer:
         1. Ray resource pools from configuration
         2. Worker groups for each role (actor, critic, etc.)
         """
+        self._progress_heartbeat("resource_pool_start")
         self.resource_pool_manager.create_resource_pool()
+        self._progress_heartbeat("resource_pool_done")
 
         self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
@@ -1416,6 +1418,7 @@ class RayPPOTrainer:
                 )
         wg_kwargs["device_name"] = self.device_name
 
+        self._progress_heartbeat("worker_spawn_start")
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
             worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
             wg_dict = self.ray_worker_group_cls(
@@ -1425,6 +1428,7 @@ class RayPPOTrainer:
             )
             spawn_wg = wg_dict.spawn(prefix_set=class_dict.keys())
             all_wg.update(spawn_wg)
+        self._progress_heartbeat("worker_spawn_done")
 
         if self.use_critic:
             self.critic_wg = all_wg[str(Role.Critic)]
@@ -1457,7 +1461,9 @@ class RayPPOTrainer:
 
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
         self.actor_rollout_wg = all_wg[str(actor_role)]
+        self._progress_heartbeat("actor_model_init_start")
         self.actor_rollout_wg.init_model()
+        self._progress_heartbeat("actor_model_init_done")
 
         if self.ref_in_actor:
             self.ref_policy_wg = self.actor_rollout_wg
@@ -1478,11 +1484,13 @@ class RayPPOTrainer:
         else:
             rm_resource_pool = None
 
+        self._progress_heartbeat("agent_loop_init_start")
         self.async_rollout_manager = AgentLoopManager(
             config=self.config,
             worker_group=self.actor_rollout_wg,
             rm_resource_pool=rm_resource_pool,
         )
+        self._progress_heartbeat("agent_loop_init_done")
 
     def _save_checkpoint(self):
         from verl.utils.fs import local_mkdir_safe
