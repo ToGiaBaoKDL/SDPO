@@ -20,7 +20,7 @@ sdpo_math_configure_profile() {
     a100:fast)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS="${AGENT_WORKERS:-32}"
+      AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=1024
       MODEL_LEN=3072
       ACTOR_LEN=4096
@@ -38,7 +38,7 @@ sdpo_math_configure_profile() {
     a100:balanced)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS="${AGENT_WORKERS:-32}"
+      AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=1536
       MODEL_LEN=4096
       ACTOR_LEN=6144
@@ -56,7 +56,7 @@ sdpo_math_configure_profile() {
     a100:quality)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS="${AGENT_WORKERS:-32}"
+      AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=2048
       MODEL_LEN=6144
       ACTOR_LEN=8192
@@ -74,7 +74,7 @@ sdpo_math_configure_profile() {
     h100:fast)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS="${AGENT_WORKERS:-32}"
+      AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=1024
       MODEL_LEN=3072
       ACTOR_LEN=4096
@@ -92,7 +92,7 @@ sdpo_math_configure_profile() {
     h100:balanced)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS="${AGENT_WORKERS:-32}"
+      AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=1536
       MODEL_LEN=4096
       ACTOR_LEN=6144
@@ -110,7 +110,7 @@ sdpo_math_configure_profile() {
     h100:quality)
       TRAIN_BS=32
       ROLLOUT_N=2
-      AGENT_WORKERS="${AGENT_WORKERS:-32}"
+      AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=2048
       MODEL_LEN=6144
       ACTOR_LEN=8192
@@ -134,11 +134,12 @@ sdpo_math_configure_profile() {
   ROLLOUT_TP="${ROLLOUT_TP:-2}"
   SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"
   SDPO_DISTILLATION_TOPK="${SDPO_DISTILLATION_TOPK:-50}"
+  RELIABILITY_GATE_MAX_FRACTION="${RELIABILITY_GATE_MAX_FRACTION:-0.5}"
 
   export TRAIN_BS ROLLOUT_N AGENT_WORKERS RESPONSE_LEN MODEL_LEN ACTOR_LEN REPROMPT_LEN
   export BATCHED_TOKENS MAX_NUM_SEQS GPU_UTIL SDPO_BATCHED_TOKENS SDPO_MAX_NUM_SEQS SDPO_GPU_UTIL
   export SDPO_ACTOR_LEN SDPO_REPROMPT_LEN SDPO_ACTIVATION_OFFLOAD SDPO_DISTILLATION_TOPK
-  export ENFORCE_EAGER ROLLOUT_TP
+  export ENFORCE_EAGER ROLLOUT_TP RELIABILITY_GATE_MAX_FRACTION
 }
 
 sdpo_math_validate_profile() {
@@ -195,6 +196,7 @@ sdpo_math_build_common_overrides() {
     actor_max_token_len="${ACTOR_LEN}"
     actor_rollout_ref.actor.ppo_mini_batch_size="${TRAIN_BS}"
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu="${ACTOR_LEN}"
+    actor_rollout_ref.actor.response_only_logits=True
     actor_rollout_ref.actor.data_loader_seed="${SEED:-42}"
     actor_rollout_ref.rollout.n="${ROLLOUT_N}"
     actor_rollout_ref.rollout.tensor_model_parallel_size="${ROLLOUT_TP}"
@@ -238,5 +240,5 @@ sdpo_math_prepare_phase_run() {
   sdpo_math_init_logging "${log_dir}"
   sdpo_math_build_common_overrides
 
-  echo "hardware=${HARDWARE_PROFILE:-a100} profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} rollout_tp=${ROLLOUT_TP} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} max_num_seqs=${MAX_NUM_SEQS} gpu_util=${GPU_UTIL} sdpo_batched_tokens=${SDPO_BATCHED_TOKENS} sdpo_max_num_seqs=${SDPO_MAX_NUM_SEQS} sdpo_gpu_util=${SDPO_GPU_UTIL} sdpo_actor_len=${SDPO_ACTOR_LEN} sdpo_reprompt_len=${SDPO_REPROMPT_LEN} sdpo_activation_offload=${SDPO_ACTIVATION_OFFLOAD} enforce_eager=${ENFORCE_EAGER} rollout_quantization=${ROLLOUT_QUANTIZATION:-null}"
+  echo "hardware=${HARDWARE_PROFILE:-a100} profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} rollout_tp=${ROLLOUT_TP} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} max_num_seqs=${MAX_NUM_SEQS} gpu_util=${GPU_UTIL} response_only_logits=True sdpo_batched_tokens=${SDPO_BATCHED_TOKENS} sdpo_max_num_seqs=${SDPO_MAX_NUM_SEQS} sdpo_gpu_util=${SDPO_GPU_UTIL} sdpo_actor_len=${SDPO_ACTOR_LEN} sdpo_reprompt_len=${SDPO_REPROMPT_LEN} sdpo_activation_offload=${SDPO_ACTIVATION_OFFLOAD} reliability_gate_max_fraction=${RELIABILITY_GATE_MAX_FRACTION} enforce_eager=${ENFORCE_EAGER} rollout_quantization=${ROLLOUT_QUANTIZATION:-null}"
 }

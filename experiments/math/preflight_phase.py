@@ -49,6 +49,7 @@ def main() -> None:
         "gate_sparse_execution": cfg["actor_rollout_ref"]["actor"]["self_distillation"][
             "reliability_gate_sparse_execution"
         ],
+        "response_only_logits": cfg["actor_rollout_ref"]["actor"]["response_only_logits"],
         "actor_dynamic_batching": cfg["actor_rollout_ref"]["actor"]["use_dynamic_bsz"],
         "actor_shuffle": cfg["actor_rollout_ref"]["actor"]["shuffle"],
     }
@@ -61,7 +62,7 @@ def main() -> None:
     assert checks["critic_model"] == "Qwen/Qwen3-8B"
     assert checks["train_batch_size"] == 24
     assert "val_batch_size" not in cfg["data"]
-    assert checks["agent_workers"] == 32
+    assert checks["agent_workers"] == 8
     assert checks["max_num_batched_tokens"] == 49152
     assert checks["max_num_seqs"] == 64
     assert checks["enforce_eager"] is True
@@ -69,6 +70,7 @@ def main() -> None:
     assert checks["dataloader_workers"] == 0
     assert checks["filter_workers"] == 1
     assert checks["gate_sparse_execution"] is True
+    assert checks["response_only_logits"] is True
     assert checks["actor_dynamic_batching"] is False
     assert checks["actor_shuffle"] is False
 
@@ -96,7 +98,7 @@ def main() -> None:
         "h100:quality)",
         "TRAIN_BS=32",
         "ROLLOUT_N=2",
-        'AGENT_WORKERS="${AGENT_WORKERS:-32}"',
+        'AGENT_WORKERS="${AGENT_WORKERS:-8}"',
         "RESPONSE_LEN=1024",
         "RESPONSE_LEN=1536",
         "RESPONSE_LEN=2048",
@@ -115,6 +117,7 @@ def main() -> None:
         'GPU_UTIL="${GPU_UTIL:-0.70}"',
         'ENFORCE_EAGER="${ENFORCE_EAGER:-True}"',
         "effective_rollouts",
+        "actor_rollout_ref.actor.response_only_logits=True",
         'actor_rollout_ref.rollout.tensor_model_parallel_size="${ROLLOUT_TP}"',
         'actor_rollout_ref.rollout.max_num_seqs="${MAX_NUM_SEQS}"',
         'actor_rollout_ref.rollout.max_num_seqs="${SDPO_MAX_NUM_SEQS}"',
@@ -253,6 +256,7 @@ def main() -> None:
         'self._progress_heartbeat("gen_start")',
         'self._progress_heartbeat("actor_update_done")',
         "build_reliability_gate_schedule",
+        "apply_reliability_gate_budget",
         "_prepare_sparse_self_distillation_actor_batch",
         "self_distillation_sparse_compute_mask",
     ]:
@@ -264,7 +268,13 @@ def main() -> None:
 
     actor_worker_path = "verl/workers/actor/dp_actor.py"
     actor_worker = Path(actor_worker_path).read_text(encoding="utf-8")
-    for snippet in ["initialize_ema_teacher", "_trainable_teacher_parameter_pairs", "ema_teacher_update"]:
+    for snippet in [
+        "initialize_ema_teacher",
+        "_trainable_teacher_parameter_pairs",
+        "ema_teacher_update",
+        "response_only_logits_kwargs",
+        '"logits_to_keep": response_length + 1',
+    ]:
         require_snippet(actor_worker_path, actor_worker, snippet)
     fsdp_worker_path = "verl/workers/fsdp_workers.py"
     fsdp_worker = Path(fsdp_worker_path).read_text(encoding="utf-8")

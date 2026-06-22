@@ -21,6 +21,8 @@ PROGRESS_KEYS = {
     "self_distillation/feedback_used_fraction": "feedback",
     "self_distillation/reliability_weight_mean": "rel_w",
     "self_distillation/reliability_gate_threshold": "gate_thr",
+    "self_distillation/reliability_gate_max_fraction": "gate_cap",
+    "self_distillation/reliability_gate_eligible_fraction": "gate_eligible",
     "self_distillation/reliability_gate_target_fraction": "gate",
     "self_distillation/reliability_gate_compute_fraction": "gate_compute",
     "self_distillation/reliability_gate_compute_teacher_token_fraction": "gate_tok",

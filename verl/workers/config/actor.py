@@ -67,7 +67,10 @@ class SelfDistillationConfig(BaseConfig):
         reliability_format_feedback_weight (float): Weight for format-only feedback targets.
         reliability_truncated_weight (float): Weight for truncated targets.
         reliability_gate_threshold (float): If positive, only samples with reliability weight greater
-            than or equal to this threshold run the SDPO teacher forward.
+            than or equal to this threshold are eligible for SDPO student/teacher forwards.
+        reliability_gate_max_fraction (Optional[float]): Optional upper bound on the fraction of each
+            training batch selected by the reliability gate. Highest-weight eligible targets are
+            retained first.
         reliability_gate_sparse_execution (bool): Align gated samples across data-parallel ranks and skip
             student and teacher forwards for rows rejected on every rank.
         reprompt_template_feedback (str): Template for reprompting with feedback but no solution.
@@ -110,6 +113,7 @@ class SelfDistillationConfig(BaseConfig):
     reliability_format_feedback_weight: float = 0.2
     reliability_truncated_weight: float = 0.0
     reliability_gate_threshold: float = 0.0
+    reliability_gate_max_fraction: Optional[float] = None
     reliability_gate_sparse_execution: bool = True
 
     def __post_init__(self):
@@ -146,6 +150,13 @@ class SelfDistillationConfig(BaseConfig):
             raise ValueError(
                 "self_distillation.reliability_gate_threshold requires "
                 "self_distillation.reliability_weighting=True"
+            )
+        if self.reliability_gate_max_fraction is not None and not (
+            0.0 < self.reliability_gate_max_fraction <= 1.0
+        ):
+            raise ValueError(
+                "self_distillation.reliability_gate_max_fraction must be in (0,1], got "
+                f"{self.reliability_gate_max_fraction}"
             )
 
 
@@ -397,6 +408,8 @@ class FSDPActorConfig(ActorConfig):
         entropy_checkpointing (bool): Whether to use gradient checkpointing for entropy computation.
         fsdp_config (dict[str, Any]): Configuration for FSDP settings.
         use_remove_padding (bool): Whether to remove padding tokens in inputs during training
+        response_only_logits (bool): Whether supported causal LMs should apply the LM head only
+            to positions needed for response-token log probabilities.
     """
 
     strategy: str = "fsdp"
@@ -406,6 +419,7 @@ class FSDPActorConfig(ActorConfig):
     entropy_checkpointing: bool = False
     fsdp_config: FSDPEngineConfig = field(default_factory=FSDPEngineConfig)
     use_remove_padding: bool = False
+    response_only_logits: bool = False
     use_rollout_log_probs: bool = False
     calculate_sum_pi_squared: bool = False
     sum_pi_squared_checkpointing: bool = False

@@ -28,6 +28,8 @@ SUMMARY_COLUMNS = [
     "sdpo_feedback_used_fraction",
     "sdpo_reliability_weight_mean",
     "sdpo_reliability_gate_threshold",
+    "sdpo_reliability_gate_max_fraction",
+    "sdpo_reliability_gate_eligible_fraction",
     "sdpo_reliability_gate_fraction",
     "sdpo_reliability_gate_compute_fraction",
     "sdpo_reliability_gate_compute_token_fraction",
@@ -163,6 +165,12 @@ def summarize_metric_file(path: Path) -> dict[str, Any]:
         "sdpo_feedback_used_fraction": data.get("self_distillation/feedback_used_fraction", ""),
         "sdpo_reliability_weight_mean": data.get("self_distillation/reliability_weight_mean", ""),
         "sdpo_reliability_gate_threshold": data.get("self_distillation/reliability_gate_threshold", ""),
+        "sdpo_reliability_gate_max_fraction": data.get(
+            "self_distillation/reliability_gate_max_fraction", ""
+        ),
+        "sdpo_reliability_gate_eligible_fraction": data.get(
+            "self_distillation/reliability_gate_eligible_fraction", ""
+        ),
         "sdpo_reliability_gate_fraction": data.get("self_distillation/reliability_gate_target_fraction", ""),
         "sdpo_reliability_gate_compute_fraction": data.get(
             "self_distillation/reliability_gate_compute_fraction", ""
@@ -205,6 +213,12 @@ def summarize_console_log(path: Path) -> dict[str, Any]:
         "sdpo_feedback_used_fraction": data.get("self_distillation/feedback_used_fraction", ""),
         "sdpo_reliability_weight_mean": data.get("self_distillation/reliability_weight_mean", ""),
         "sdpo_reliability_gate_threshold": data.get("self_distillation/reliability_gate_threshold", ""),
+        "sdpo_reliability_gate_max_fraction": data.get(
+            "self_distillation/reliability_gate_max_fraction", ""
+        ),
+        "sdpo_reliability_gate_eligible_fraction": data.get(
+            "self_distillation/reliability_gate_eligible_fraction", ""
+        ),
         "sdpo_reliability_gate_fraction": data.get("self_distillation/reliability_gate_target_fraction", ""),
         "sdpo_reliability_gate_compute_fraction": data.get(
             "self_distillation/reliability_gate_compute_fraction", ""

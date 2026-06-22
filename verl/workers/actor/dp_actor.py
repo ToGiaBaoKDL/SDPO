@@ -43,10 +43,48 @@ from verl.utils.ulysses import gather_outputs_and_unpad, slice_input_tensor, uly
 from verl.workers.actor import BasePPOActor
 from verl.workers.config import ActorConfig
 
-__all__ = ["DataParallelPPOActor"]
+__all__ = ["DataParallelPPOActor", "response_only_logits_kwargs"]
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
+
+
+def response_only_logits_kwargs(
+    model: nn.Module,
+    response_length: int,
+    *,
+    enabled: bool,
+    use_remove_padding: bool,
+    use_fused_kernels: bool,
+) -> dict[str, int]:
+    """Return exact response-only LM-head kwargs for supported causal LMs."""
+    if not enabled or use_remove_padding or use_fused_kernels:
+        return {}
+
+    current = model
+    visited = set()
+    wrapper_types = []
+    for _ in range(16):
+        if id(current) in visited:
+            break
+        visited.add(id(current))
+        wrapper_types.append(type(current).__name__)
+        config = getattr(current, "config", None)
+        if getattr(config, "model_type", None) == "qwen3":
+            return {"logits_to_keep": response_length + 1}
+        next_module = None
+        for attr in ("module", "_fsdp_wrapped_module", "base_model", "model"):
+            candidate = getattr(current, attr, None)
+            if isinstance(candidate, nn.Module) and candidate is not current:
+                next_module = candidate
+                break
+        if next_module is None:
+            break
+        current = next_module
+    raise ValueError(
+        "response_only_logits=True requires a supported Qwen3 causal LM; "
+        f"inspected wrappers={wrapper_types}"
+    )
 
 
 class TrustRegionTeacher(nn.Module):
@@ -234,6 +272,7 @@ class DataParallelPPOActor(BasePPOActor):
             raise ValueError("Logit distillation requires disabling fused kernels.")
 
         model = module or self.actor_module
+        response_only_logits = bool(self.config.get("response_only_logits", False))
 
         # PrefixGrouper path for shared-prefix optimization
         if self.use_prefix_grouper:
@@ -535,6 +574,15 @@ class DataParallelPPOActor(BasePPOActor):
                 if self.use_fused_kernels:
                     extra_args["temperature"] = temperature
                     extra_args["return_dict"] = True
+                extra_args.update(
+                    response_only_logits_kwargs(
+                        model,
+                        response_length,
+                        enabled=response_only_logits,
+                        use_remove_padding=self.use_remove_padding,
+                        use_fused_kernels=self.use_fused_kernels,
+                    )
+                )
 
                 output = model(
                     input_ids=input_ids,

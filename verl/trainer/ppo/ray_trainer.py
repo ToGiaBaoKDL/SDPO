@@ -329,6 +329,35 @@ def build_reliability_gate_schedule(
     return permutation, compute_mask, selected_per_rank
 
 
+def apply_reliability_gate_budget(
+    eligible_mask: torch.Tensor,
+    reliability_weight: torch.Tensor,
+    max_fraction: Optional[float],
+) -> torch.Tensor:
+    """Retain the highest-reliability eligible rows within a batch compute budget."""
+    if eligible_mask.ndim != 1 or eligible_mask.dtype != torch.bool:
+        raise ValueError("eligible_mask must be a one-dimensional boolean tensor")
+    if reliability_weight.ndim != 1 or reliability_weight.shape != eligible_mask.shape:
+        raise ValueError("reliability_weight must match eligible_mask")
+    if max_fraction is None:
+        return eligible_mask
+    if not 0.0 < max_fraction <= 1.0:
+        raise ValueError(f"reliability gate max_fraction must be in (0,1], got {max_fraction}")
+
+    eligible_count = int(eligible_mask.sum().item())
+    max_targets = max(1, int(eligible_mask.numel() * max_fraction))
+    if eligible_count <= max_targets:
+        return eligible_mask
+
+    eligible_indices = torch.nonzero(eligible_mask, as_tuple=False).flatten()
+    eligible_weights = reliability_weight[eligible_indices]
+    priority = torch.argsort(eligible_weights, descending=True, stable=True)
+    selected_indices = eligible_indices[priority[:max_targets]]
+    selected_mask = torch.zeros_like(eligible_mask)
+    selected_mask[selected_indices] = True
+    return selected_mask
+
+
 class RayPPOTrainer:
     """Distributed PPO trainer using Ray for scalable reinforcement learning.
 
@@ -796,7 +825,10 @@ class RayPPOTrainer:
         if threshold > 0:
             if weight is None:
                 raise ValueError("reliability-gated SDPO requires reliability weights")
-            target_mask = (weight >= threshold) & distillation_mask
+            eligible_mask = (weight >= threshold) & distillation_mask
+            max_fraction = self_distillation_cfg.get("reliability_gate_max_fraction", None)
+            max_fraction = float(max_fraction) if max_fraction is not None else None
+            target_mask = apply_reliability_gate_budget(eligible_mask, weight, max_fraction)
             sparse_execution = bool(self_distillation_cfg.get("reliability_gate_sparse_execution", True))
         elif reliability_weighting:
             if weight is None:
@@ -832,6 +864,12 @@ class RayPPOTrainer:
         target_mask = target_mask.to(device=batch_device)
         if torch.any(target_mask & ~compute_mask):
             raise RuntimeError("reliability gate schedule dropped a selected target")
+        if threshold > 0:
+            actor_batch.batch["self_distillation_weight"] = torch.where(
+                target_mask,
+                actor_batch.batch["self_distillation_weight"],
+                torch.zeros_like(actor_batch.batch["self_distillation_weight"]),
+            )
         actor_batch.batch["self_distillation_sparse_compute_mask"] = compute_mask
 
         teacher_attention = actor_batch.batch["teacher_attention_mask"].float()
@@ -868,6 +906,10 @@ class RayPPOTrainer:
             metrics.update(
                 {
                     "self_distillation/reliability_gate_sparse_execution": float(sparse_execution),
+                    "self_distillation/reliability_gate_max_fraction": (
+                        float(max_fraction) if max_fraction is not None else 1.0
+                    ),
+                    "self_distillation/reliability_gate_eligible_fraction": eligible_mask.float().mean().item(),
                     "self_distillation/reliability_gate_target_fraction": metrics[
                         "self_distillation/sparse_target_fraction"
                     ],
@@ -945,10 +987,10 @@ class RayPPOTrainer:
             metrics.update(
                 {
                     "self_distillation/reliability_gate_threshold": gate_threshold,
-                    "self_distillation/reliability_gate_target_fraction": gated.float().mean().item()
+                    "self_distillation/reliability_gate_eligible_fraction": gated.float().mean().item()
                     if len(weights) > 0
                     else 0.0,
-                    "self_distillation/reliability_gate_target_count": gated.sum().item(),
+                    "self_distillation/reliability_gate_eligible_count": gated.sum().item(),
                 }
             )
         return weight_tensor, metrics

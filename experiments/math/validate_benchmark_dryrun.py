@@ -44,6 +44,7 @@ COMMON_SNIPPETS = {
         "actor_rollout_ref.actor.self_distillation.sparse_target_execution=True",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=False",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction=null",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution=False",
     ],
     "sdpo_reliability": [
@@ -57,6 +58,7 @@ COMMON_SNIPPETS = {
         "actor_rollout_ref.actor.self_distillation.sparse_target_execution=True",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=True",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction=null",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution=False",
     ],
     "sdpo_reliability_gate": [
@@ -70,6 +72,7 @@ COMMON_SNIPPETS = {
         "actor_rollout_ref.actor.self_distillation.sparse_target_execution=True",
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=True",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_threshold={reliability_gate_threshold}",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction={reliability_gate_max_fraction}",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution=True",
     ],
 }
@@ -82,7 +85,7 @@ FORBIDDEN_SNIPPETS = [
 PROFILE_EXPECTATIONS = {
     ("a100", "fast"): {
         "train_batch_size": 32,
-        "agent_workers": 32,
+        "agent_workers": 8,
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.72",
@@ -94,7 +97,7 @@ PROFILE_EXPECTATIONS = {
     },
     ("a100", "balanced"): {
         "train_batch_size": 32,
-        "agent_workers": 32,
+        "agent_workers": 8,
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.72",
@@ -106,7 +109,7 @@ PROFILE_EXPECTATIONS = {
     },
     ("a100", "quality"): {
         "train_batch_size": 32,
-        "agent_workers": 32,
+        "agent_workers": 8,
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.70",
@@ -118,7 +121,7 @@ PROFILE_EXPECTATIONS = {
     },
     ("h100", "fast"): {
         "train_batch_size": 32,
-        "agent_workers": 32,
+        "agent_workers": 8,
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.92",
@@ -130,7 +133,7 @@ PROFILE_EXPECTATIONS = {
     },
     ("h100", "balanced"): {
         "train_batch_size": 32,
-        "agent_workers": 32,
+        "agent_workers": 8,
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.93",
@@ -142,7 +145,7 @@ PROFILE_EXPECTATIONS = {
     },
     ("h100", "quality"): {
         "train_batch_size": 32,
-        "agent_workers": 32,
+        "agent_workers": 8,
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.93",
@@ -177,6 +180,14 @@ def manifest_gate_threshold(manifest: dict | None) -> str:
     gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
     threshold = gate_cfg.get("reliability_gate_threshold", "0.4")
     return str(threshold)
+
+
+def manifest_gate_max_fraction(manifest: dict | None) -> str:
+    if manifest is None:
+        return "0.5"
+    gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+    max_fraction = gate_cfg.get("reliability_gate_max_fraction", "0.5")
+    return str(max_fraction)
 
 
 def manifest_model(manifest: dict | None) -> str:
@@ -217,6 +228,7 @@ def expected_snippets(
     profile: str,
     variants: list[str],
     reliability_gate_threshold: str,
+    reliability_gate_max_fraction: str,
     model: str,
     train_steps: str,
     rollout_tp: str,
@@ -238,6 +250,7 @@ def expected_snippets(
         snippets = [
             snippet.format(
                 reliability_gate_threshold=reliability_gate_threshold,
+                reliability_gate_max_fraction=reliability_gate_max_fraction,
                 model=model,
                 train_steps=train_steps,
             )
@@ -252,6 +265,7 @@ def expected_snippets(
         actor_len = settings["sdpo_actor_len"] if variant.startswith("sdpo_") else None
         reprompt_len = settings["sdpo_reprompt_len"] if variant.startswith("sdpo_") else None
         snippets.append(f"data.train_batch_size={settings['train_batch_size']}")
+        snippets.append("actor_rollout_ref.actor.response_only_logits=True")
         snippets.append(f"actor_rollout_ref.rollout.tensor_model_parallel_size={rollout_tp}")
         snippets.append(f"actor_rollout_ref.rollout.agent.num_workers={agent_workers}")
         snippets.append(f"actor_rollout_ref.rollout.max_num_seqs={max_num_seqs}")
@@ -286,6 +300,7 @@ def main() -> None:
     manifest = load_manifest(args.log_dir)
     variants = manifest_variants(manifest) or list(COMMON_SNIPPETS)
     reliability_gate_threshold = manifest_gate_threshold(manifest)
+    reliability_gate_max_fraction = manifest_gate_max_fraction(manifest)
     model = manifest_model(manifest)
     train_steps = manifest_train_steps(manifest, args.steps)
     rollout_tp = manifest_rollout_tp(manifest, args.phase)
@@ -304,6 +319,7 @@ def main() -> None:
         args.profile,
         variants,
         reliability_gate_threshold,
+        reliability_gate_max_fraction,
         model,
         train_steps,
         rollout_tp,

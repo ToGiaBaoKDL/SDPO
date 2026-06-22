@@ -96,6 +96,10 @@ def main() -> None:
         "manifest missing sdpo_reliability_gate reliability_gate_threshold",
     )
     require(
+        gate_cfg.get("reliability_gate_max_fraction") not in (None, ""),
+        "manifest missing sdpo_reliability_gate reliability_gate_max_fraction",
+    )
+    require(
         gate_cfg.get("reliability_gate_sparse_execution") is True,
         "manifest missing sdpo_reliability_gate sparse execution",
     )
@@ -126,6 +130,14 @@ def main() -> None:
             require(
                 row.get("sdpo_reliability_gate_threshold", "") != "",
                 "sdpo_reliability_gate missing gate threshold metric",
+            )
+            require(
+                row.get("sdpo_reliability_gate_max_fraction", "") != "",
+                "sdpo_reliability_gate missing gate max-fraction metric",
+            )
+            require(
+                row.get("sdpo_reliability_gate_eligible_fraction", "") != "",
+                "sdpo_reliability_gate missing eligible-fraction metric",
             )
             require(
                 row.get("sdpo_reliability_gate_fraction", "") != "",

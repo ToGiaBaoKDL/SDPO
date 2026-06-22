@@ -61,6 +61,7 @@ for snippet in [
     'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
     "ROLLOUT_QUANTIZATION=null",
     'actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}"',
+    'actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction="${reliability_gate_max_fraction}"',
     'actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution="${reliability_gate_sparse_execution}"',
 ]:
     assert snippet in runner, f"benchmark runner missing gate/default logic: {snippet}"
@@ -107,7 +108,13 @@ for snippet in [
 
 actor_worker = Path("verl/workers/actor/dp_actor.py").read_text(encoding="utf-8")
 fsdp_worker = Path("verl/workers/fsdp_workers.py").read_text(encoding="utf-8")
-for snippet in ["initialize_ema_teacher", "_trainable_teacher_parameter_pairs", "ema_teacher_update"]:
+for snippet in [
+    "initialize_ema_teacher",
+    "_trainable_teacher_parameter_pairs",
+    "ema_teacher_update",
+    "response_only_logits_kwargs",
+    '"logits_to_keep": response_length + 1',
+]:
     assert snippet in actor_worker, f"actor worker missing optimized EMA logic: {snippet}"
 assert "self.actor.initialize_ema_teacher()" in fsdp_worker
 teacher_init = fsdp_worker.index("self.actor.initialize_ema_teacher()")
@@ -152,8 +159,10 @@ assert summary_mod.infer_variant(Path("sdpo_reliability_phase_seed42.jsonl")) ==
 
 if importlib.util.find_spec("torch") and importlib.util.find_spec("ray"):
     import torch
+    from torch import nn
 
-    from verl.trainer.ppo.ray_trainer import build_reliability_gate_schedule
+    from verl.trainer.ppo.ray_trainer import apply_reliability_gate_budget, build_reliability_gate_schedule
+    from verl.workers.actor.dp_actor import response_only_logits_kwargs
 
     target = torch.tensor([True, False, True, False, True, False, False, False])
     permutation, compute_mask, selected_per_rank = build_reliability_gate_schedule(target, dp_size=2)
@@ -163,6 +172,32 @@ if importlib.util.find_spec("torch") and importlib.util.find_spec("ray"):
     assert not torch.any(aligned_target & ~compute_mask)
     assert sorted(permutation.tolist()) == list(range(len(target)))
     print("reliability_gate_schedule_ok")
+
+    weights = torch.tensor([1.0, 0.4, 0.4, 0.2, 1.0, 0.4, 0.0, 0.4])
+    eligible = weights >= 0.4
+    budgeted = apply_reliability_gate_budget(eligible, weights, max_fraction=0.5)
+    assert budgeted.sum().item() == 4
+    assert budgeted[0] and budgeted[4]
+    assert not torch.any(budgeted & ~eligible)
+    print("reliability_gate_budget_ok")
+
+    class DummyQwen3(nn.Module):
+        config = type("Config", (), {"model_type": "qwen3"})()
+
+    class DummyWrapper(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.module = DummyQwen3()
+
+    kwargs = response_only_logits_kwargs(
+        DummyWrapper(),
+        1024,
+        enabled=True,
+        use_remove_padding=False,
+        use_fused_kernels=False,
+    )
+    assert kwargs == {"logits_to_keep": 1025}
+    print("response_only_logits_ok")
 else:
     print("reliability_gate_schedule_skipped: torch/ray unavailable")
 
@@ -190,7 +225,7 @@ for snippet in [
     "TRAIN_BS=32",
     "ROLLOUT_N=2",
     'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
-    'AGENT_WORKERS="${AGENT_WORKERS:-32}"',
+    'AGENT_WORKERS="${AGENT_WORKERS:-8}"',
     'MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"',
     'SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-32768}"',
     'SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"',
@@ -198,6 +233,7 @@ for snippet in [
     'SDPO_ACTOR_LEN="${SDPO_ACTOR_LEN:-3072}"',
     'SDPO_REPROMPT_LEN="${SDPO_REPROMPT_LEN:-1536}"',
     'SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"',
+    "actor_rollout_ref.actor.response_only_logits=True",
     'actor_rollout_ref.rollout.tensor_model_parallel_size="${ROLLOUT_TP}"',
     'ENFORCE_EAGER="${ENFORCE_EAGER:-True}"',
     'actor_rollout_ref.rollout.max_num_seqs="${MAX_NUM_SEQS}"',
@@ -252,7 +288,7 @@ assert cfg["actor_rollout_ref"]["model"]["path"] == "Qwen/Qwen3-8B"
 assert cfg["critic"]["model"]["path"] == "Qwen/Qwen3-8B"
 assert cfg["data"]["train_batch_size"] == 24
 assert "val_batch_size" not in cfg["data"]
-assert cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"] == 32
+assert cfg["actor_rollout_ref"]["rollout"]["agent"]["num_workers"] == 8
 assert cfg["actor_rollout_ref"]["rollout"]["max_num_batched_tokens"] == 49152
 assert cfg["actor_rollout_ref"]["rollout"]["max_num_seqs"] == 64
 assert cfg["actor_rollout_ref"]["rollout"]["enforce_eager"] is True
@@ -260,7 +296,9 @@ assert cfg["actor_rollout_ref"]["rollout"]["val_kwargs"]["temperature"] == 0.01
 assert cfg["actor_rollout_ref"]["model"]["lora_rank"] > 0
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_weighting"] is False
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_threshold"] == 0.0
+assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_max_fraction"] is None
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_sparse_execution"] is True
+assert cfg["actor_rollout_ref"]["actor"]["response_only_logits"] is True
 assert cfg["actor_rollout_ref"]["actor"]["use_dynamic_bsz"] is False
 assert cfg["actor_rollout_ref"]["actor"]["shuffle"] is False
 assert cfg["trainer"]["n_gpus_per_node"] == 2

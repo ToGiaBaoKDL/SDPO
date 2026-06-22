@@ -16,6 +16,7 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Base RL max seqs | 64 |
 | SDPO max seqs | 32 on A100, 48 on H100 |
 | SDPO activation offload | true |
+| Qwen3 response-only logits | true |
 | Attention | SDPA |
 | LoRA | enabled for trained variants |
 | Reliability gate execution | Reliability-weighted, DP-aligned sparse student/teacher forwards |
@@ -28,11 +29,12 @@ Notebook commands for 2 GPU SDPO-Math runs.
 
 | Profile | Train batch | Rollout n | Workers | Response | Model len | Base tokens | A100 SDPO tokens | A100 SDPO actor len |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `fast` | 32 | 2 | 32 | 1024 | 3072 | 49152 | 32768 | 3072 |
-| `balanced` | 32 | 2 | 32 | 1536 | 4096 | 65536 | 49152 | 4096 |
-| `quality` | 32 | 2 | 32 | 2048 | 6144 | 98304 | 49152 | 6144 |
+| `fast` | 32 | 2 | 8 | 1024 | 3072 | 49152 | 32768 | 3072 |
+| `balanced` | 32 | 2 | 8 | 1536 | 4096 | 65536 | 49152 | 4096 |
+| `quality` | 32 | 2 | 8 | 2048 | 6144 | 98304 | 49152 | 6144 |
 
 SDPO variants use separate memory knobs: `SDPO_BATCHED_TOKENS`, `SDPO_MAX_NUM_SEQS`, `SDPO_GPU_UTIL`, `SDPO_ACTOR_LEN`, and `SDPO_REPROMPT_LEN`.
+Qwen3 computes LM-head logits only for the shifted response positions required by the loss.
 
 ## Setup
 
@@ -119,6 +121,7 @@ export SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"
 export SDPO_ACTOR_LEN="${SDPO_ACTOR_LEN:-3072}"
 export SDPO_REPROMPT_LEN="${SDPO_REPROMPT_LEN:-1536}"
 export SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"
+export RELIABILITY_GATE_MAX_FRACTION="${RELIABILITY_GATE_MAX_FRACTION:-0.5}"
 export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-12}"
@@ -166,6 +169,7 @@ export SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"
 export SDPO_ACTOR_LEN="${SDPO_ACTOR_LEN:-4096}"
 export SDPO_REPROMPT_LEN="${SDPO_REPROMPT_LEN:-2048}"
 export SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"
+export RELIABILITY_GATE_MAX_FRACTION="${RELIABILITY_GATE_MAX_FRACTION:-0.5}"
 export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-32}"
@@ -219,3 +223,5 @@ cat "$LOG_DIR/summary.md"
 | Shorter thesis | `export TRAIN_STEPS=16`, `export TRAIN_MAX_SAMPLES=512` |
 
 Progress lines include `step_s`, `gen_s`, `oldlp_s`, `upd_s`, and `tok_s`.
+
+`ppo_micro_batch_size_per_gpu` is already 1. Lowering `TRAIN_BS` changes accumulation and rollout volume but does not directly remove the peak single-forward allocation.

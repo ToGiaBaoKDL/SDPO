@@ -78,6 +78,7 @@ def main() -> None:
                 "SDPO_REPROMPT_LEN",
                 "SDPO_ACTIVATION_OFFLOAD",
                 "SDPO_DISTILLATION_TOPK",
+                "RELIABILITY_GATE_MAX_FRACTION",
                 "ENFORCE_EAGER",
                 "ROLLOUT_QUANTIZATION",
             ]
@@ -99,6 +100,7 @@ def main() -> None:
             },
             "sdpo_reliability_gate": {
                 "reliability_gate_threshold": os.environ.get("RELIABILITY_GATE_THRESHOLD", "0.4"),
+                "reliability_gate_max_fraction": os.environ.get("RELIABILITY_GATE_MAX_FRACTION", "0.5"),
                 "reliability_weighting": True,
                 "reliability_gate_sparse_execution": os.environ.get(
                     "RELIABILITY_GATE_SPARSE_EXECUTION", "True"

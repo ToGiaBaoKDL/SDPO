@@ -21,6 +21,7 @@ SEED="${SEED:-42}"
 VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-1}"
 HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"
+RELIABILITY_GATE_MAX_FRACTION="${RELIABILITY_GATE_MAX_FRACTION:-0.5}"
 RELIABILITY_GATE_SPARSE_EXECUTION="${RELIABILITY_GATE_SPARSE_EXECUTION:-True}"
 SDPO_SPARSE_TARGET_EXECUTION="${SDPO_SPARSE_TARGET_EXECUTION:-True}"
 
@@ -116,7 +117,7 @@ case "${MODEL_PATH}" in
     ;;
 esac
 
-export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH HARDWARE_PROFILE RELIABILITY_GATE_THRESHOLD
+export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH HARDWARE_PROFILE RELIABILITY_GATE_THRESHOLD RELIABILITY_GATE_MAX_FRACTION
 export RELIABILITY_GATE_SPARSE_EXECUTION SDPO_SPARSE_TARGET_EXECUTION ROLLOUT_TP ROLLOUT_QUANTIZATION
 export TRAIN_MAX_SAMPLES VAL_MAX_SAMPLES SEED
 
@@ -134,6 +135,7 @@ sdpo_math_prepare_phase_run "${RUN_PROFILE}" "${LOG_DIR}"
 echo "phase=${PHASE} model=${MODEL_PATH} variants=${VARIANTS} dry_run=${DRY_RUN}"
 echo "hardware=${HARDWARE_PROFILE}"
 echo "reliability_gate_threshold=${RELIABILITY_GATE_THRESHOLD}"
+echo "reliability_gate_max_fraction=${RELIABILITY_GATE_MAX_FRACTION}"
 echo "reliability_gate_sparse_execution=${RELIABILITY_GATE_SPARSE_EXECUTION}"
 echo "sdpo_sparse_target_execution=${SDPO_SPARSE_TARGET_EXECUTION}"
 echo "sdpo_rollout_memory=batched_tokens:${SDPO_BATCHED_TOKENS} max_num_seqs:${SDPO_MAX_NUM_SEQS} gpu_util:${SDPO_GPU_UTIL}"
@@ -284,6 +286,7 @@ run_sdpo_variant() {
   local include_feedback=True
   local reliability=False
   local reliability_gate_threshold=0.0
+  local reliability_gate_max_fraction=null
   local reliability_gate_sparse_execution=False
 
   case "${variant}" in
@@ -295,6 +298,7 @@ run_sdpo_variant() {
     sdpo_reliability_gate)
       reliability=True
       reliability_gate_threshold="${RELIABILITY_GATE_THRESHOLD}"
+      reliability_gate_max_fraction="${RELIABILITY_GATE_MAX_FRACTION}"
       reliability_gate_sparse_execution="${RELIABILITY_GATE_SPARSE_EXECUTION}"
       ;;
     *)
@@ -323,6 +327,7 @@ run_sdpo_variant() {
       actor_rollout_ref.actor.self_distillation.sparse_target_execution="${SDPO_SPARSE_TARGET_EXECUTION}" \
       actor_rollout_ref.actor.self_distillation.reliability_weighting="${reliability}" \
       actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}" \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction="${reliability_gate_max_fraction}" \
       actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution="${reliability_gate_sparse_execution}" \
       "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
       "${COMMON_OVERRIDES[@]}" \
