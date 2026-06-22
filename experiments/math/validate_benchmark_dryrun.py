@@ -88,6 +88,8 @@ PROFILE_EXPECTATIONS = {
         "gpu_util": "0.72",
         "sdpo_max_num_seqs": 32,
         "sdpo_gpu_util": "0.58",
+        "sdpo_actor_len": 3072,
+        "sdpo_reprompt_len": 1536,
         "enforce_eager": "True",
     },
     ("a100", "balanced"): {
@@ -98,6 +100,8 @@ PROFILE_EXPECTATIONS = {
         "gpu_util": "0.72",
         "sdpo_max_num_seqs": 32,
         "sdpo_gpu_util": "0.56",
+        "sdpo_actor_len": 4096,
+        "sdpo_reprompt_len": 2048,
         "enforce_eager": "True",
     },
     ("a100", "quality"): {
@@ -108,6 +112,8 @@ PROFILE_EXPECTATIONS = {
         "gpu_util": "0.70",
         "sdpo_max_num_seqs": 32,
         "sdpo_gpu_util": "0.54",
+        "sdpo_actor_len": 6144,
+        "sdpo_reprompt_len": 3072,
         "enforce_eager": "True",
     },
     ("h100", "fast"): {
@@ -118,6 +124,8 @@ PROFILE_EXPECTATIONS = {
         "gpu_util": "0.92",
         "sdpo_max_num_seqs": 48,
         "sdpo_gpu_util": "0.78",
+        "sdpo_actor_len": 4096,
+        "sdpo_reprompt_len": 2048,
         "enforce_eager": "True",
     },
     ("h100", "balanced"): {
@@ -128,6 +136,8 @@ PROFILE_EXPECTATIONS = {
         "gpu_util": "0.93",
         "sdpo_max_num_seqs": 48,
         "sdpo_gpu_util": "0.78",
+        "sdpo_actor_len": 6144,
+        "sdpo_reprompt_len": 3072,
         "enforce_eager": "True",
     },
     ("h100", "quality"): {
@@ -138,6 +148,8 @@ PROFILE_EXPECTATIONS = {
         "gpu_util": "0.93",
         "sdpo_max_num_seqs": 48,
         "sdpo_gpu_util": "0.76",
+        "sdpo_actor_len": 8192,
+        "sdpo_reprompt_len": 4096,
         "enforce_eager": "True",
     },
 }
@@ -237,11 +249,19 @@ def expected_snippets(
     for variant, snippets in result.items():
         max_num_seqs = settings["sdpo_max_num_seqs"] if variant.startswith("sdpo_") else settings["max_num_seqs"]
         gpu_util = settings["sdpo_gpu_util"] if variant.startswith("sdpo_") else settings["gpu_util"]
+        actor_len = settings["sdpo_actor_len"] if variant.startswith("sdpo_") else None
+        reprompt_len = settings["sdpo_reprompt_len"] if variant.startswith("sdpo_") else None
         snippets.append(f"data.train_batch_size={settings['train_batch_size']}")
         snippets.append(f"actor_rollout_ref.rollout.tensor_model_parallel_size={rollout_tp}")
         snippets.append(f"actor_rollout_ref.rollout.agent.num_workers={agent_workers}")
         snippets.append(f"actor_rollout_ref.rollout.max_num_seqs={max_num_seqs}")
         snippets.append(f"actor_rollout_ref.rollout.gpu_memory_utilization={gpu_util}")
+        if actor_len is not None:
+            snippets.append(f"actor_max_token_len={actor_len}")
+            snippets.append(f"actor_rollout_ref.actor.ppo_max_token_len_per_gpu={actor_len}")
+            snippets.append("actor_rollout_ref.model.enable_activation_offload=True")
+        if reprompt_len is not None:
+            snippets.append(f"actor_rollout_ref.actor.self_distillation.max_reprompt_len={reprompt_len}")
         snippets.append(f"actor_rollout_ref.rollout.enforce_eager={settings['enforce_eager']}")
         snippets.append(f"actor_rollout_ref.rollout.quantization={rollout_quantization}")
     return result

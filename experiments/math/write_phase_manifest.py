@@ -74,6 +74,10 @@ def main() -> None:
                 "SDPO_BATCHED_TOKENS",
                 "SDPO_MAX_NUM_SEQS",
                 "SDPO_GPU_UTIL",
+                "SDPO_ACTOR_LEN",
+                "SDPO_REPROMPT_LEN",
+                "SDPO_ACTIVATION_OFFLOAD",
+                "SDPO_DISTILLATION_TOPK",
                 "ENFORCE_EAGER",
                 "ROLLOUT_QUANTIZATION",
             ]

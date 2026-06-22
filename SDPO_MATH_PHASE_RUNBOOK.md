@@ -15,6 +15,7 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Rollout quantization | `null` for Phase 2/4 |
 | Base RL max seqs | 64 |
 | SDPO max seqs | 32 on A100, 48 on H100 |
+| SDPO activation offload | true |
 | Attention | SDPA |
 | LoRA | enabled for trained variants |
 | Reliability gate execution | Reliability-weighted, DP-aligned sparse student/teacher forwards |
@@ -25,13 +26,13 @@ Notebook commands for 2 GPU SDPO-Math runs.
 | Scale decision | `Qwen/Qwen3-8B` | `fast` | 12 | 256 | 64 |
 | Thesis | `Qwen/Qwen3-8B` | `balanced` | 32 | 1024 | 256 |
 
-| Profile | Train batch | Rollout n | Workers | Response | Model len | Base tokens | A100 SDPO tokens |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `fast` | 32 | 2 | 32 | 1024 | 3072 | 49152 | 32768 |
-| `balanced` | 32 | 2 | 32 | 1536 | 4096 | 65536 | 49152 |
-| `quality` | 32 | 2 | 32 | 2048 | 6144 | 98304 | 49152 |
+| Profile | Train batch | Rollout n | Workers | Response | Model len | Base tokens | A100 SDPO tokens | A100 SDPO actor len |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `fast` | 32 | 2 | 32 | 1024 | 3072 | 49152 | 32768 | 3072 |
+| `balanced` | 32 | 2 | 32 | 1536 | 4096 | 65536 | 49152 | 4096 |
+| `quality` | 32 | 2 | 32 | 2048 | 6144 | 98304 | 49152 | 6144 |
 
-SDPO variants use separate rollout memory knobs: `SDPO_BATCHED_TOKENS`, `SDPO_MAX_NUM_SEQS`, and `SDPO_GPU_UTIL`.
+SDPO variants use separate memory knobs: `SDPO_BATCHED_TOKENS`, `SDPO_MAX_NUM_SEQS`, `SDPO_GPU_UTIL`, `SDPO_ACTOR_LEN`, and `SDPO_REPROMPT_LEN`.
 
 ## Setup
 
@@ -55,7 +56,7 @@ cd /root/SDPO
 source experiments/math/math_env.sh
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 unset GPU_UTIL MAX_NUM_SEQS BATCHED_TOKENS
-unset SDPO_GPU_UTIL SDPO_MAX_NUM_SEQS SDPO_BATCHED_TOKENS
+unset SDPO_GPU_UTIL SDPO_MAX_NUM_SEQS SDPO_BATCHED_TOKENS SDPO_ACTOR_LEN SDPO_REPROMPT_LEN
 unset ROLLOUT_QUANTIZATION
 export ROLLOUT_TP=2
 export ENFORCE_EAGER=True
@@ -89,7 +90,7 @@ source experiments/math/math_env.sh
 export PHASE=pilot
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 unset GPU_UTIL MAX_NUM_SEQS BATCHED_TOKENS
-unset SDPO_GPU_UTIL SDPO_MAX_NUM_SEQS SDPO_BATCHED_TOKENS
+unset SDPO_GPU_UTIL SDPO_MAX_NUM_SEQS SDPO_BATCHED_TOKENS SDPO_ACTOR_LEN SDPO_REPROMPT_LEN
 unset ROLLOUT_QUANTIZATION
 export ROLLOUT_TP=2
 export ENFORCE_EAGER=True
@@ -115,6 +116,9 @@ export MAX_NUM_SEQS=64
 export SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-32768}"
 export SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.58}"
 export SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"
+export SDPO_ACTOR_LEN="${SDPO_ACTOR_LEN:-3072}"
+export SDPO_REPROMPT_LEN="${SDPO_REPROMPT_LEN:-1536}"
+export SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"
 export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-12}"
@@ -159,6 +163,9 @@ export GPU_UTIL="${GPU_UTIL:-0.72}"
 export SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-49152}"
 export SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.56}"
 export SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"
+export SDPO_ACTOR_LEN="${SDPO_ACTOR_LEN:-4096}"
+export SDPO_REPROMPT_LEN="${SDPO_REPROMPT_LEN:-2048}"
+export SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"
 export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-32}"
@@ -205,7 +212,7 @@ cat "$LOG_DIR/summary.md"
 | Probe | Setting |
 |---|---|
 | Fewer Ray agent actors | `export AGENT_WORKERS=16` |
-| Safer SDPO memory | `export SDPO_GPU_UTIL=0.52`, `export SDPO_MAX_NUM_SEQS=16` |
+| Safer SDPO memory | `export SDPO_GPU_UTIL=0.50`, `export SDPO_MAX_NUM_SEQS=16`, `export SDPO_ACTOR_LEN=2048` |
 | Faster SDPO memory trial | `export SDPO_GPU_UTIL=0.62`, `export SDPO_MAX_NUM_SEQS=32` |
 | Smaller validation | `export VAL_MAX_SAMPLES=32` |
 | CUDA graph test | `export ENFORCE_EAGER=False` |
