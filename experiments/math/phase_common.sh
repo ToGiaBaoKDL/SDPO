@@ -133,7 +133,7 @@ sdpo_math_init_logging() {
   export VERL_FILE_LOGGER_ROOT="${log_dir}/metrics"
   RAY_LOG_TO_DRIVER_OVERRIDE=(
     +ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT="${VERL_FILE_LOGGER_ROOT}"
-    +ray_kwargs.ray_init.runtime_env.env_vars.PYTHONUNBUFFERED=1
+    +ray_kwargs.ray_init.runtime_env.env_vars.PYTHONUNBUFFERED='"1"'
   )
 
   if [[ "${ULTRA_QUIET:-0}" == "1" ]]; then
