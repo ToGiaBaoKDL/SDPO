@@ -71,6 +71,9 @@ def main() -> None:
                 "BATCHED_TOKENS",
                 "MAX_NUM_SEQS",
                 "GPU_UTIL",
+                "SDPO_BATCHED_TOKENS",
+                "SDPO_MAX_NUM_SEQS",
+                "SDPO_GPU_UTIL",
                 "ENFORCE_EAGER",
                 "ROLLOUT_QUANTIZATION",
             ]

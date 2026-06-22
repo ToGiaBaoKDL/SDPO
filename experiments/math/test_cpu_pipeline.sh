@@ -192,9 +192,13 @@ for snippet in [
     'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
     'AGENT_WORKERS="${AGENT_WORKERS:-32}"',
     'MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"',
+    'SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-32768}"',
+    'SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"',
+    'SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.58}"',
     'actor_rollout_ref.rollout.tensor_model_parallel_size="${ROLLOUT_TP}"',
     'ENFORCE_EAGER="${ENFORCE_EAGER:-True}"',
     'actor_rollout_ref.rollout.max_num_seqs="${MAX_NUM_SEQS}"',
+    'actor_rollout_ref.rollout.max_num_seqs="${SDPO_MAX_NUM_SEQS}"',
     'actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"',
     'actor_rollout_ref.rollout.quantization="${ROLLOUT_QUANTIZATION:-null}"',
 ]:

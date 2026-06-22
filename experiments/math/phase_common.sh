@@ -28,6 +28,9 @@ sdpo_math_configure_profile() {
       BATCHED_TOKENS="${BATCHED_TOKENS:-49152}"
       MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
       GPU_UTIL="${GPU_UTIL:-0.72}"
+      SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-32768}"
+      SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"
+      SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.58}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     a100:balanced)
@@ -41,6 +44,9 @@ sdpo_math_configure_profile() {
       BATCHED_TOKENS="${BATCHED_TOKENS:-65536}"
       MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
       GPU_UTIL="${GPU_UTIL:-0.72}"
+      SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-49152}"
+      SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"
+      SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.56}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     a100:quality)
@@ -54,6 +60,9 @@ sdpo_math_configure_profile() {
       BATCHED_TOKENS="${BATCHED_TOKENS:-98304}"
       MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
       GPU_UTIL="${GPU_UTIL:-0.70}"
+      SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-49152}"
+      SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"
+      SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.54}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     h100:fast)
@@ -67,6 +76,9 @@ sdpo_math_configure_profile() {
       BATCHED_TOKENS="${BATCHED_TOKENS:-49152}"
       MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
       GPU_UTIL="${GPU_UTIL:-0.92}"
+      SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-49152}"
+      SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-48}"
+      SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.78}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     h100:balanced)
@@ -80,6 +92,9 @@ sdpo_math_configure_profile() {
       BATCHED_TOKENS="${BATCHED_TOKENS:-65536}"
       MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
       GPU_UTIL="${GPU_UTIL:-0.93}"
+      SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-49152}"
+      SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-48}"
+      SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.78}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     h100:quality)
@@ -93,6 +108,9 @@ sdpo_math_configure_profile() {
       BATCHED_TOKENS="${BATCHED_TOKENS:-98304}"
       MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"
       GPU_UTIL="${GPU_UTIL:-0.93}"
+      SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-65536}"
+      SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-48}"
+      SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.76}"
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     *)
@@ -103,7 +121,9 @@ sdpo_math_configure_profile() {
 
   ROLLOUT_TP="${ROLLOUT_TP:-2}"
 
-  export TRAIN_BS ROLLOUT_N AGENT_WORKERS RESPONSE_LEN MODEL_LEN ACTOR_LEN REPROMPT_LEN BATCHED_TOKENS MAX_NUM_SEQS GPU_UTIL ENFORCE_EAGER ROLLOUT_TP
+  export TRAIN_BS ROLLOUT_N AGENT_WORKERS RESPONSE_LEN MODEL_LEN ACTOR_LEN REPROMPT_LEN
+  export BATCHED_TOKENS MAX_NUM_SEQS GPU_UTIL SDPO_BATCHED_TOKENS SDPO_MAX_NUM_SEQS SDPO_GPU_UTIL
+  export ENFORCE_EAGER ROLLOUT_TP
 }
 
 sdpo_math_validate_profile() {
@@ -165,10 +185,7 @@ sdpo_math_build_common_overrides() {
     actor_rollout_ref.rollout.tensor_model_parallel_size="${ROLLOUT_TP}"
     actor_rollout_ref.rollout.agent.num_workers="${AGENT_WORKERS}"
     actor_rollout_ref.rollout.max_model_len="${MODEL_LEN}"
-    actor_rollout_ref.rollout.max_num_batched_tokens="${BATCHED_TOKENS}"
-    actor_rollout_ref.rollout.max_num_seqs="${MAX_NUM_SEQS}"
     actor_rollout_ref.rollout.enforce_eager="${ENFORCE_EAGER}"
-    actor_rollout_ref.rollout.gpu_memory_utilization="${GPU_UTIL}"
     actor_rollout_ref.rollout.quantization="${ROLLOUT_QUANTIZATION:-null}"
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu="${MODEL_LEN}"
     actor_rollout_ref.rollout.val_kwargs.n=1
@@ -177,6 +194,18 @@ sdpo_math_build_common_overrides() {
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu="${MODEL_LEN}"
     actor_rollout_ref.actor.self_distillation.max_reprompt_len="${REPROMPT_LEN}"
     critic.data_loader_seed="${SEED:-42}"
+  )
+
+  BASE_ROLLOUT_OVERRIDES=(
+    actor_rollout_ref.rollout.max_num_batched_tokens="${BATCHED_TOKENS}"
+    actor_rollout_ref.rollout.max_num_seqs="${MAX_NUM_SEQS}"
+    actor_rollout_ref.rollout.gpu_memory_utilization="${GPU_UTIL}"
+  )
+
+  SDPO_ROLLOUT_OVERRIDES=(
+    actor_rollout_ref.rollout.max_num_batched_tokens="${SDPO_BATCHED_TOKENS}"
+    actor_rollout_ref.rollout.max_num_seqs="${SDPO_MAX_NUM_SEQS}"
+    actor_rollout_ref.rollout.gpu_memory_utilization="${SDPO_GPU_UTIL}"
   )
 }
 
@@ -189,5 +218,5 @@ sdpo_math_prepare_phase_run() {
   sdpo_math_init_logging "${log_dir}"
   sdpo_math_build_common_overrides
 
-  echo "hardware=${HARDWARE_PROFILE:-a100} profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} rollout_tp=${ROLLOUT_TP} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} max_num_seqs=${MAX_NUM_SEQS} gpu_util=${GPU_UTIL} enforce_eager=${ENFORCE_EAGER} rollout_quantization=${ROLLOUT_QUANTIZATION:-null}"
+  echo "hardware=${HARDWARE_PROFILE:-a100} profile=${profile} train_bs=${TRAIN_BS} rollout_n=${ROLLOUT_N} rollout_tp=${ROLLOUT_TP} effective_rollouts=$((TRAIN_BS * ROLLOUT_N)) agent_workers=${AGENT_WORKERS} response_len=${RESPONSE_LEN} model_len=${MODEL_LEN} batched_tokens=${BATCHED_TOKENS} max_num_seqs=${MAX_NUM_SEQS} gpu_util=${GPU_UTIL} sdpo_batched_tokens=${SDPO_BATCHED_TOKENS} sdpo_max_num_seqs=${SDPO_MAX_NUM_SEQS} sdpo_gpu_util=${SDPO_GPU_UTIL} enforce_eager=${ENFORCE_EAGER} rollout_quantization=${ROLLOUT_QUANTIZATION:-null}"
 }

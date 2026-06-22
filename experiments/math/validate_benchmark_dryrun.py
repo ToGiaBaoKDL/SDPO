@@ -86,6 +86,8 @@ PROFILE_EXPECTATIONS = {
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.72",
+        "sdpo_max_num_seqs": 32,
+        "sdpo_gpu_util": "0.58",
         "enforce_eager": "True",
     },
     ("a100", "balanced"): {
@@ -94,6 +96,8 @@ PROFILE_EXPECTATIONS = {
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.72",
+        "sdpo_max_num_seqs": 32,
+        "sdpo_gpu_util": "0.56",
         "enforce_eager": "True",
     },
     ("a100", "quality"): {
@@ -102,6 +106,8 @@ PROFILE_EXPECTATIONS = {
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.70",
+        "sdpo_max_num_seqs": 32,
+        "sdpo_gpu_util": "0.54",
         "enforce_eager": "True",
     },
     ("h100", "fast"): {
@@ -110,6 +116,8 @@ PROFILE_EXPECTATIONS = {
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.92",
+        "sdpo_max_num_seqs": 48,
+        "sdpo_gpu_util": "0.78",
         "enforce_eager": "True",
     },
     ("h100", "balanced"): {
@@ -118,6 +126,8 @@ PROFILE_EXPECTATIONS = {
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.93",
+        "sdpo_max_num_seqs": 48,
+        "sdpo_gpu_util": "0.78",
         "enforce_eager": "True",
     },
     ("h100", "quality"): {
@@ -126,6 +136,8 @@ PROFILE_EXPECTATIONS = {
         "base_model_train_max_samples": 64,
         "max_num_seqs": 64,
         "gpu_util": "0.93",
+        "sdpo_max_num_seqs": 48,
+        "sdpo_gpu_util": "0.76",
         "enforce_eager": "True",
     },
 }
@@ -222,12 +234,14 @@ def expected_snippets(
         result[variant] = snippets
     if "base_model" in result:
         result["base_model"].append(f"data.train_max_samples={settings['base_model_train_max_samples']}")
-    for snippets in result.values():
+    for variant, snippets in result.items():
+        max_num_seqs = settings["sdpo_max_num_seqs"] if variant.startswith("sdpo_") else settings["max_num_seqs"]
+        gpu_util = settings["sdpo_gpu_util"] if variant.startswith("sdpo_") else settings["gpu_util"]
         snippets.append(f"data.train_batch_size={settings['train_batch_size']}")
         snippets.append(f"actor_rollout_ref.rollout.tensor_model_parallel_size={rollout_tp}")
         snippets.append(f"actor_rollout_ref.rollout.agent.num_workers={agent_workers}")
-        snippets.append(f"actor_rollout_ref.rollout.max_num_seqs={settings['max_num_seqs']}")
-        snippets.append(f"actor_rollout_ref.rollout.gpu_memory_utilization={settings['gpu_util']}")
+        snippets.append(f"actor_rollout_ref.rollout.max_num_seqs={max_num_seqs}")
+        snippets.append(f"actor_rollout_ref.rollout.gpu_memory_utilization={gpu_util}")
         snippets.append(f"actor_rollout_ref.rollout.enforce_eager={settings['enforce_eager']}")
         snippets.append(f"actor_rollout_ref.rollout.quantization={rollout_quantization}")
     return result

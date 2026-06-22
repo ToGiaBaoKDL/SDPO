@@ -136,6 +136,7 @@ echo "hardware=${HARDWARE_PROFILE}"
 echo "reliability_gate_threshold=${RELIABILITY_GATE_THRESHOLD}"
 echo "reliability_gate_sparse_execution=${RELIABILITY_GATE_SPARSE_EXECUTION}"
 echo "sdpo_sparse_target_execution=${SDPO_SPARSE_TARGET_EXECUTION}"
+echo "sdpo_rollout_memory=batched_tokens:${SDPO_BATCHED_TOKENS} max_num_seqs:${SDPO_MAX_NUM_SEQS} gpu_util:${SDPO_GPU_UTIL}"
 echo "steps=${TRAIN_STEPS} train_max=${TRAIN_MAX_SAMPLES} val_max=${VAL_MAX_SAMPLES} eval_freq=${EVAL_FREQ} save_freq=${SAVE_FREQ} seed=${SEED}"
 echo "exp_suffix=${EXP_SUFFIX}"
 echo "logs=${LOG_DIR}"
@@ -243,6 +244,7 @@ run_base_model_val() {
       actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0 \
       "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
       "${COMMON_OVERRIDES[@]}" \
+      "${BASE_ROLLOUT_OVERRIDES[@]}" \
       "$@"
 }
 
@@ -270,6 +272,7 @@ run_base_rl() {
       actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0 \
       "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
       "${COMMON_OVERRIDES[@]}" \
+      "${BASE_ROLLOUT_OVERRIDES[@]}" \
       "$@"
 }
 
@@ -322,6 +325,7 @@ run_sdpo_variant() {
       actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution="${reliability_gate_sparse_execution}" \
       "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
       "${COMMON_OVERRIDES[@]}" \
+      "${SDPO_ROLLOUT_OVERRIDES[@]}" \
       "$@"
 }
 
