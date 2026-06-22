@@ -212,6 +212,13 @@ for snippet in [
     assert snippet in download_script, f"download script missing artifact logic: {snippet}"
 
 phase_common = Path("experiments/math/phase_common.sh").read_text(encoding="utf-8")
+
+fsdp_utils = Path("verl/utils/fsdp_utils.py").read_text(encoding="utf-8")
+assert "def collect_lora_and_base_params" in fsdp_utils
+assert "model.to(orig_dev)" not in fsdp_utils
+
+fsdp_workers = Path("verl/workers/fsdp_workers.py").read_text(encoding="utf-8")
+assert "params, base_model_params = collect_lora_and_base_params" in fsdp_workers
 assert "+ray_kwargs.ray_init.log_to_driver=False" in phase_common
 assert "+ray_kwargs.ray_init.runtime_env.env_vars.VERL_FILE_LOGGER_ROOT=" in phase_common
 assert "\n      ray_kwargs.ray_init.log_to_driver=False" not in phase_common

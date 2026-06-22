@@ -280,9 +280,15 @@ def main() -> None:
     fsdp_worker = Path(fsdp_worker_path).read_text(encoding="utf-8")
     require_snippet(fsdp_worker_path, fsdp_worker, "self.actor.initialize_ema_teacher()")
     require_snippet(fsdp_worker_path, fsdp_worker, "offload the teacher before vLLM reserves GPU memory")
+    require_snippet(fsdp_worker_path, fsdp_worker, "collect_lora_and_base_params")
     teacher_init = fsdp_worker.index("self.actor.initialize_ema_teacher()")
     rollout_init = fsdp_worker.index("self._build_rollout(", teacher_init)
     assert teacher_init < rollout_init, "SDPO teacher must be initialized before the colocated vLLM rollout"
+
+    fsdp_utils_path = "verl/utils/fsdp_utils.py"
+    fsdp_utils = Path(fsdp_utils_path).read_text(encoding="utf-8")
+    require_snippet(fsdp_utils_path, fsdp_utils, "def collect_lora_and_base_params")
+    assert "model.to(orig_dev)" not in fsdp_utils, "LoRA sync must not restore a full gathered model to GPU"
 
     watcher_path = "experiments/math/watch_phase_progress.py"
     watcher = Path(watcher_path).read_text(encoding="utf-8")
