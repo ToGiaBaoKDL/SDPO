@@ -173,12 +173,12 @@ export RELIABILITY_GATE_MAX_FRACTION="${RELIABILITY_GATE_MAX_FRACTION:-0.5}"
 export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export TRAIN_STEPS="${TRAIN_STEPS:-10}"
-export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-768}"
+export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"
 export EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
 export SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"
-export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"
+export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
 export VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
-export ULTRA_QUIET="${ULTRA_QUIET:-0}"
+export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
