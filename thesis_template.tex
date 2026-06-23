@@ -1,0 +1,173 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese]{babel}
+\usepackage{graphicx}
+
+\usepackage{geometry}
+\geometry{a4paper, left=3cm, right=2cm, top=2cm, bottom=2cm}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{fancyhdr}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Khóa luận chuyên ngành Khoa học dữ liệu}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyfoot[C]{\thepage}
+
+% Định nghĩa viền đôi cho trang bìa
+\newcommand{\drawborder}{
+    \begin{tikzpicture}[remember picture, overlay]
+        \draw[line width=2pt] ($(current page.south west) + (2cm,2cm)$) rectangle ($(current page.north east) - (1.5cm,2cm)$);
+        \draw[line width=0.5pt] ($(current page.south west) + (2.1cm,2.1cm)$) rectangle ($(current page.north east) - (1.6cm,2.1cm)$);
+    \end{tikzpicture}
+}
+
+\linespread{1.5} % Khoảng cách dòng chuẩn theo mẫu
+\setlength{\parskip}{6pt} % Khoảng cách giữa các đoạn văn
+
+\begin{document}
+
+% ------------------------- TRANG BÌA NGOÀI -------------------------
+\begin{titlepage}
+    \thispagestyle{empty}
+    \drawborder
+    \begin{center}
+        \textbf{\large ĐẠI HỌC QUỐC GIA TP. HỒ CHÍ MINH} \\
+        \textbf{\large TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN} \\
+        \textbf{\large KHOA TOÁN - TIN HỌC} \\
+        \vspace{2cm}
+        
+        % Chèn logo của trường
+        \includegraphics[width=6cm]{logo khtn.png} \\
+        \vspace{2.5cm}
+        
+        \textbf{\Large Khóa luận tốt nghiệp} \\
+        \vspace{2cm}
+        
+        \textbf{\Large CẢI THIỆN THUẬT TOÁN SELF-DISTILLATION POLICY OPTIMIZATION \\[0.2cm] CHO MÔ HÌNH NGÔN NGỮ LỚN \\[0.2cm] TRONG BÀI TOÁN SUY LUẬN TOÁN HỌC} \\
+        
+        \vfill
+        \large
+        \textit{Tp. Hồ Chí Minh - 2026}
+    \end{center}
+\end{titlepage}
+
+% ------------------------- TRANG BÌA TRONG -------------------------
+\begin{titlepage}
+    \thispagestyle{empty}
+    \drawborder
+    \begin{center}
+        \textbf{\large ĐẠI HỌC QUỐC GIA TP. HỒ CHÍ MINH} \\
+        \textbf{\large TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN} \\
+        \textbf{\large KHOA TOÁN - TIN HỌC} \\
+        \vspace{1cm}
+        
+        % Chèn logo của trường
+        \includegraphics[width=6cm]{logo khtn.png} \\
+        \vspace{1cm}
+        
+        \textbf{\Large Khóa luận tốt nghiệp} \\
+        \vspace{1cm}
+        
+        \textbf{\Large CẢI THIỆN THUẬT TOÁN SELF-DISTILLATION POLICY OPTIMIZATION \\[0.2cm] CHO MÔ HÌNH NGÔN NGỮ LỚN \\[0.2cm] TRONG BÀI TOÁN SUY LUẬN TOÁN HỌC} \\
+        \vspace{1cm}
+        
+        \large CHUYÊN NGÀNH KHOA HỌC DỮ LIỆU \\
+        \vspace{1cm}
+        
+        \begin{tabular}{@{}ll@{}}
+            \textbf{\large Giảng viên hướng dẫn:} & \large TS. NGÔ MINH MẪN \\[0.5cm]
+            \textbf{\large Sinh viên thực hiện:} & \large TÔ GIA BẢO - 22280006 \\
+            & \large PHAN VĂN HOÀNG - 22280033
+        \end{tabular}
+        
+        \vfill
+        \large
+        \textit{Tp. Hồ Chí Minh - 2026}
+    \end{center}
+\end{titlepage}
+
+% ------------------------- LỜI CẢM ƠN -------------------------
+\chapter*{LỜI CẢM ƠN}
+\addcontentsline{toc}{chapter}{LỜI CẢM ƠN}
+Lời đầu tiên, chúng em xin gửi lời cảm ơn chân thành đến Khoa Toán - Tin học và Trường Đại học Khoa học Tự nhiên, ĐHQG-HCM đã tạo điều kiện cho chúng em được học tập và rèn luyện trong môi trường giáo dục chất lượng cao, giúp chúng em có cơ hội thực hiện khóa luận tốt nghiệp này.
+
+Chúng em đặc biệt biết ơn TS. Ngô Minh Mẫn, người đã tận tâm hướng dẫn, chỉ bảo chúng em trong suốt quá trình thực hiện đề tài. Nhờ sự nhiệt tình và tận tâm của thầy, chúng em đã được trang bị những kiến thức và kỹ năng cần thiết để hoàn thành khóa luận tốt nghiệp một cách tốt đẹp nhất.
+
+Chúng em cũng xin gửi lời tri ân đến gia đình, đặc biệt là ba mẹ - những người đã luôn yêu thương, động viên và tạo điều kiện tốt nhất cho chúng em học tập và theo đuổi đam mê. Nhờ sự ủng hộ tinh thần to lớn của gia đình, chúng em đã có thêm động lực để vượt qua mọi khó khăn và hoàn thành khóa luận tốt nghiệp một cách xuất sắc.
+
+Chúng em ý thức được rằng, trong quá trình nghiên cứu và hoàn thành khóa luận tốt nghiệp vẫn còn nhiều thiếu sót và hạn chế. Do vậy, chúng em rất mong nhận được những góp ý quý báu từ quý thầy cô và các bạn trong hội đồng để khóa luận của chúng em ngày càng hoàn thiện hơn.
+
+% ------------------------- LỜI MỞ ĐẦU -------------------------
+\chapter*{LỜI MỞ ĐẦU}
+\addcontentsline{toc}{chapter}{LỜI MỞ ĐẦU}
+(Phần nội dung lời mở đầu - Sinh viên tự bổ sung sau)
+
+% ------------------------- DANH SÁCH TỪ VIẾT TẮT -------------------------
+\chapter*{DANH SÁCH TỪ VIẾT TẮT}
+\addcontentsline{toc}{chapter}{DANH SÁCH TỪ VIẾT TẮT}
+(Phần nội dung danh sách từ viết tắt - Sinh viên tự bổ sung sau)
+
+% ------------------------- DANH MỤC -------------------------
+\tableofcontents
+\listoffigures
+\listoftables
+
+\clearpage
+\pagenumbering{arabic} % Đánh số trang 1, 2, 3... bắt đầu từ đây
+
+% ------------------------- CHƯƠNG 1 -------------------------
+\chapter{TỔNG QUAN VỀ ĐỀ TÀI}
+\section{Giới thiệu bài toán}
+\subsection{Bối cảnh}
+\subsection{Hiện trạng và thách thức}
+\section{Mục tiêu nghiên cứu}
+\subsection{Mục tiêu tổng quát}
+\subsection{Mục tiêu cụ thể}
+\section{Phạm vi và giới hạn nghiên cứu}
+\section{Bố cục khóa luận}
+
+% ------------------------- CHƯƠNG 2 -------------------------
+\chapter{CƠ SỞ LÝ THUYẾT VÀ CÔNG NGHỆ}
+\section{Mô hình ngôn ngữ lớn (Large Language Models)}
+\section{Bài toán suy luận toán học}
+\section{Thuật toán Self-Distillation Policy Optimization (SDPO)}
+\section{Các công nghệ và thư viện hỗ trợ}
+
+% ------------------------- CHƯƠNG 3 -------------------------
+\chapter{PHƯƠNG PHÁP ĐỀ XUẤT VÀ THIẾT KẾ}
+\section{Phân tích thuật toán SDPO hiện tại}
+\section{Giải pháp cải thiện thuật toán SDPO}
+\section{Thiết kế hệ thống huấn luyện và đánh giá}
+\section{Kiến trúc tổng thể}
+
+% ------------------------- CHƯƠNG 4 -------------------------
+\chapter{THỰC NGHIỆM VÀ ĐÁNH GIÁ}
+\section{Môi trường và dữ liệu thực nghiệm}
+\section{Thiết lập tham số huấn luyện}
+\section{Kết quả thực nghiệm}
+\section{Phân tích và đánh giá kết quả}
+
+% ------------------------- CHƯƠNG 5 -------------------------
+\chapter{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
+\section{Kết luận}
+\section{Những đóng góp chính}
+\section{Hướng phát triển tiếp theo}
+
+% ------------------------- TÀI LIỆU THAM KHẢO -------------------------
+\begin{thebibliography}{99}
+\addcontentsline{toc}{chapter}{TÀI LIỆU THAM KHẢO}
+\bibitem{ref1}
+Tác giả 1. \textit{Tên bài báo/sách}. Nhà xuất bản, Năm.
+\bibitem{ref2}
+Tác giả 2. \textit{Tên bài báo/sách}. Nhà xuất bản, Năm.
+\end{thebibliography}
+
+\end{document}
