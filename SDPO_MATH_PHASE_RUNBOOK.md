@@ -20,7 +20,7 @@ Notebook commands for final SDPO-Math thesis runs.
 | Run | Hardware | Train steps | Train max | Val max |
 |---|---|---:|---:|---:|
 | Thesis A100/H100 | A100/H100 | 10 | 1024 | 128 |
-| Thesis H200 | H200 | 10 | 2048 | 256 |
+| Thesis H200 | H200 | 15 | 1536 | 128 |
 
 ## Setup
 
@@ -65,9 +65,9 @@ source experiments/math/math_env.sh
 export PHASE=thesis
 export HARDWARE_PROFILE=h200
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
-export TRAIN_STEPS="${TRAIN_STEPS:-10}"
-export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-2048}"
-export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"
+export TRAIN_STEPS="${TRAIN_STEPS:-15}"
+export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1536}"
+export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
 
