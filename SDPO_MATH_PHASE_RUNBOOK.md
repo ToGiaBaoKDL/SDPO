@@ -159,25 +159,23 @@ source experiments/math/math_env.sh
 
 export PHASE=thesis
 export HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
-export MAX_NUM_SEQS=64
-export ROLLOUT_TP="${ROLLOUT_TP:-2}"
-export BATCHED_TOKENS="${BATCHED_TOKENS:-65536}"
-export GPU_UTIL="${GPU_UTIL:-0.72}"
-export SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-49152}"
-export SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.56}"
-export SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"
-export SDPO_ACTOR_LEN="${SDPO_ACTOR_LEN:-4096}"
-export SDPO_REPROMPT_LEN="${SDPO_REPROMPT_LEN:-2048}"
-export SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"
-export RELIABILITY_GATE_MAX_FRACTION="${RELIABILITY_GATE_MAX_FRACTION:-0.5}"
-export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
-export TRAIN_STEPS="${TRAIN_STEPS:-10}"
-export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"
-export EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
-export SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"
-export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
-export VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
+export ULTRA_QUIET="${ULTRA_QUIET:-1}"
+export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
+
+bash experiments/math/run_sdpo_math_benchmark.sh
+
+## Phase 4.5
+
+%%bash
+set -euo pipefail
+
+cd /root/SDPO
+source experiments/math/math_env.sh
+
+export PHASE=thesis
+export HARDWARE_PROFILE=h200
+export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
 export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
 
@@ -202,7 +200,7 @@ python experiments/math/check_phase_report_ready.py \
   --require-checkpoints \
   --expect-phase thesis \
   --expect-model "$THESIS_MODEL_PATH" \
-  --expect-profile balanced \
+  --expect-profile quality \
   --expect-seed 42
 python experiments/math/download_phase_artifacts.py \
   --log-dir "$LOG_DIR" \

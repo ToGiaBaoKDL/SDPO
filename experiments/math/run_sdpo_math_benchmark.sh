@@ -37,10 +37,10 @@ for boolean_name in RELIABILITY_GATE_SPARSE_EXECUTION SDPO_SPARSE_TARGET_EXECUTI
 done
 
 case "${HARDWARE_PROFILE}" in
-  a100|h100)
+  a100|h100|h200)
     ;;
   *)
-    echo "Unknown HARDWARE_PROFILE=${HARDWARE_PROFILE}. Use a100 or h100." >&2
+    echo "Unknown HARDWARE_PROFILE=${HARDWARE_PROFILE}. Use a100, h100, or h200." >&2
     exit 1
     ;;
 esac
@@ -83,10 +83,14 @@ case "${PHASE}" in
     ;;
   thesis)
     DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"
-    RUN_PROFILE=balanced
+    RUN_PROFILE=quality
     MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-10}"
-    TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"
+    if [[ "${HARDWARE_PROFILE}" == "h200" ]]; then
+      TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-2048}"
+    else
+      TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"
+    fi
     VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
     EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
     SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"

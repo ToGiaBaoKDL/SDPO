@@ -54,6 +54,7 @@ for snippet in [
     'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-10}"',
     'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
+    'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-2048}"',
     'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
     'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
     'RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"',
@@ -229,14 +230,23 @@ for snippet in [
     "h100:fast)",
     "h100:balanced)",
     "h100:quality)",
+    "h200:fast)",
+    "h200:balanced)",
+    "h200:quality)",
     "TRAIN_BS=32",
+    "TRAIN_BS=64",
     "ROLLOUT_N=2",
     'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
     'AGENT_WORKERS="${AGENT_WORKERS:-8}"',
+    'AGENT_WORKERS="${AGENT_WORKERS:-16}"',
     'MAX_NUM_SEQS="${MAX_NUM_SEQS:-64}"',
+    'MAX_NUM_SEQS="${MAX_NUM_SEQS:-128}"',
     'SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-32768}"',
+    'SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-196608}"',
     'SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"',
+    'SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-96}"',
     'SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.58}"',
+    'SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.86}"',
     'SDPO_ACTOR_LEN="${SDPO_ACTOR_LEN:-3072}"',
     'SDPO_REPROMPT_LEN="${SDPO_REPROMPT_LEN:-1536}"',
     'SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"',
@@ -469,8 +479,24 @@ bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_cpu_pipeline_t
   --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_thesis_dryrun" \
   --phase thesis \
   --hardware-profile a100 \
-  --profile balanced \
+  --profile quality \
   --exp-suffix cpu_pipeline_thesis_dryrun_seed42
+
+DRY_RUN=1 \
+HARDWARE_PROFILE=h200 \
+PHASE=thesis \
+TRAIN_STEPS=1 \
+RUN_TAG=cpu_pipeline_h200_thesis_dryrun \
+EXP_SUFFIX=cpu_pipeline_h200_thesis_dryrun_seed42 \
+LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_h200_thesis_dryrun" \
+bash experiments/math/run_sdpo_math_benchmark.sh > /tmp/sdpo_math_cpu_pipeline_h200_thesis_dryrun.log
+
+"${PYTHON_BIN}" experiments/math/validate_benchmark_dryrun.py \
+  --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_h200_thesis_dryrun" \
+  --phase thesis \
+  --hardware-profile h200 \
+  --profile quality \
+  --exp-suffix cpu_pipeline_h200_thesis_dryrun_seed42
 
 "${PYTHON_BIN}" experiments/math/download_phase_artifacts.py \
   --log-dir "${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_thesis_dryrun" \
