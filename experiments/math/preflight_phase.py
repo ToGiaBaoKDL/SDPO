@@ -196,6 +196,7 @@ def main() -> None:
         'TRAIN_STEPS="${TRAIN_STEPS:-10}"',
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-2048}"',
+        'VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"',
         'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
         "ROLLOUT_QUANTIZATION=null",
         'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
