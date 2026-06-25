@@ -172,13 +172,13 @@ export SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"
 export RELIABILITY_GATE_MAX_FRACTION="${RELIABILITY_GATE_MAX_FRACTION:-0.5}"
 export ENFORCE_EAGER=True
 export VARIANTS="${VARIANTS:-base_rl sdpo_vanilla sdpo_reliability_gate}"
-export TRAIN_STEPS="${TRAIN_STEPS:-32}"
+export TRAIN_STEPS="${TRAIN_STEPS:-10}"
 export TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"
 export EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"
 export SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"
-export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-256}"
+export VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
 export VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-False}"
-export ULTRA_QUIET="${ULTRA_QUIET:-0}"
+export ULTRA_QUIET="${ULTRA_QUIET:-1}"
 export PROGRESS_WATCH="${PROGRESS_WATCH:-1}"
 
 bash experiments/math/run_sdpo_math_benchmark.sh
@@ -220,7 +220,7 @@ cat "$LOG_DIR/summary.md"
 | Faster SDPO memory trial | `export SDPO_GPU_UTIL=0.62`, `export SDPO_MAX_NUM_SEQS=32` |
 | Smaller validation | `export VAL_MAX_SAMPLES=32` |
 | CUDA graph test | `export ENFORCE_EAGER=False` |
-| Shorter thesis | `export TRAIN_STEPS=16`, `export TRAIN_MAX_SAMPLES=512` |
+| Shorter thesis | `export TRAIN_STEPS=6`, `export TRAIN_MAX_SAMPLES=512` |
 
 Progress lines include `step_s`, `gen_s`, `oldlp_s`, `upd_s`, and `tok_s`.
 
