@@ -162,7 +162,7 @@ sdpo_math_configure_profile() {
       ENFORCE_EAGER="${ENFORCE_EAGER:-True}"
       ;;
     h200:quality)
-      TRAIN_BS=64
+      TRAIN_BS=48
       ROLLOUT_N=2
       AGENT_WORKERS="${AGENT_WORKERS:-16}"
       RESPONSE_LEN=2048

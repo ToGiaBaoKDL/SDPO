@@ -47,7 +47,7 @@ esac
 
 case "${PHASE}" in
   pilot)
-    DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate"
+    DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"
     RUN_PROFILE=fast
     MODEL_PATH="${MODEL_PATH:-${PILOT_MODEL_PATH:-Qwen/Qwen3-1.7B}}"
     TRAIN_STEPS="${TRAIN_STEPS:-10}"
@@ -86,7 +86,7 @@ case "${PHASE}" in
     RUN_PROFILE=quality
     MODEL_PATH="${MODEL_PATH:-${THESIS_MODEL_PATH:-Qwen/Qwen3-8B}}"
     if [[ "${HARDWARE_PROFILE}" == "h200" ]]; then
-      TRAIN_STEPS="${TRAIN_STEPS:-15}"
+      TRAIN_STEPS="${TRAIN_STEPS:-10}"
       TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1536}"
       VAL_MAX_SAMPLES="${VAL_MAX_SAMPLES:-128}"
     else

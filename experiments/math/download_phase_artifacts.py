@@ -14,6 +14,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TRAINED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"}
+BENCHMARK_DIR_NAMES = ("benchmarks",)
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,6 +69,14 @@ def latest_checkpoint_dir(root: Path) -> Path | None:
     return max(candidates, key=checkpoint_step)
 
 
+def checkpoint_is_loadable(path: Path) -> bool:
+    actor_dir = path / "actor"
+    lora_adapter = path / "lora_adapter" / "adapter_config.json"
+    hf_dir = path / "huggingface"
+    has_hf_weights = any(hf_dir.glob("*.safetensors")) or any(hf_dir.glob("*.bin")) or any(hf_dir.glob("*.index.json"))
+    return actor_dir.exists() or lora_adapter.exists() or has_hf_weights
+
+
 def add_path(archive: tarfile.TarFile, path: Path, archive_root: str) -> None:
     if not path.exists():
         return
@@ -94,6 +103,7 @@ def main() -> None:
     archive_path = args.output_dir / f"{archive_root}.tar.gz"
 
     checkpoint_roots: list[Path] = []
+    loadable_checkpoints: list[Path] = []
     if args.include_checkpoints or args.require_checkpoints:
         project_root = Path(manifest.get("project_root") or PROJECT_ROOT)
         for variant in manifest.get("variants", []):
@@ -105,13 +115,19 @@ def main() -> None:
                 if args.require_checkpoints:
                     raise FileNotFoundError(f"missing checkpoint for {variant}: {checkpoint_root}")
                 continue
-            checkpoint_roots.append(latest)
+            if not checkpoint_is_loadable(latest):
+                if args.require_checkpoints:
+                    raise FileNotFoundError(f"checkpoint is not loadable for {variant}: {latest}")
+                continue
+            checkpoint_roots.append(checkpoint_root)
+            loadable_checkpoints.append(latest)
 
     metadata = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "log_dir": str(log_dir),
         "archive": str(archive_path),
-        "included_checkpoints": [str(path) for path in checkpoint_roots],
+        "included_checkpoint_roots": [str(path) for path in checkpoint_roots],
+        "latest_loadable_checkpoints": [str(path) for path in loadable_checkpoints],
     }
     metadata_path = args.output_dir / f"{archive_root}.json"
     metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -121,17 +137,16 @@ def main() -> None:
             log_dir / "manifest.json",
             log_dir / "summary.csv",
             log_dir / "summary.md",
+            log_dir / "latest_aime2026_benchmark_dir.txt",
             metadata_path,
         ]:
             add_path(archive, path, archive_root)
-        for subdir in ["metrics", "validation"]:
+        for subdir in ["metrics", "validation", *BENCHMARK_DIR_NAMES]:
             add_path(archive, log_dir / subdir, archive_root)
         for path in sorted(log_dir.glob("*.log")):
             add_path(archive, path, archive_root)
         for checkpoint_root in checkpoint_roots:
             add_path(archive, checkpoint_root, archive_root)
-            tracker = checkpoint_root.parent / "latest_checkpointed_iteration.txt"
-            add_path(archive, tracker, archive_root)
 
     print(f"archive={archive_path}")
     print(f"metadata={metadata_path}")

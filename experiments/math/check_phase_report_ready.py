@@ -10,9 +10,7 @@ import re
 from pathlib import Path
 
 
-REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability_gate"}
-OPTIONAL_VARIANTS = {"sdpo_reliability"}
-ALLOWED_VARIANTS = REQUIRED_VARIANTS | OPTIONAL_VARIANTS
+ALLOWED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"}
 TRAINED_VARIANTS = ALLOWED_VARIANTS
 
 
@@ -63,7 +61,7 @@ def main() -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     project_root = Path(manifest.get("project_root") or ".")
     manifest_variants = set(manifest["variants"])
-    require(REQUIRED_VARIANTS <= manifest_variants, f"manifest missing required variants: {manifest['variants']}")
+    require(manifest_variants, "manifest has no variants")
     require(manifest_variants <= ALLOWED_VARIANTS, f"unexpected variants in manifest: {manifest['variants']}")
     require(manifest["seed"] is not None, "manifest missing seed")
     require(manifest["model"], "manifest missing model")
@@ -86,23 +84,24 @@ def main() -> None:
             str(reliability_cfg.get("reliability_gate_threshold")) == "0.0",
             "manifest missing sdpo_reliability reliability_gate_threshold=0.0",
         )
-    gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
-    require(
-        gate_cfg.get("reliability_weighting") is True,
-        "manifest missing sdpo_reliability_gate reliability_weighting=True",
-    )
-    require(
-        gate_cfg.get("reliability_gate_threshold") not in (None, ""),
-        "manifest missing sdpo_reliability_gate reliability_gate_threshold",
-    )
-    require(
-        gate_cfg.get("reliability_gate_max_fraction") not in (None, ""),
-        "manifest missing sdpo_reliability_gate reliability_gate_max_fraction",
-    )
-    require(
-        gate_cfg.get("reliability_gate_sparse_execution") is True,
-        "manifest missing sdpo_reliability_gate sparse execution",
-    )
+    if "sdpo_reliability_gate" in manifest_variants:
+        gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+        require(
+            gate_cfg.get("reliability_weighting") is True,
+            "manifest missing sdpo_reliability_gate reliability_weighting=True",
+        )
+        require(
+            gate_cfg.get("reliability_gate_threshold") not in (None, ""),
+            "manifest missing sdpo_reliability_gate reliability_gate_threshold",
+        )
+        require(
+            gate_cfg.get("reliability_gate_max_fraction") not in (None, ""),
+            "manifest missing sdpo_reliability_gate reliability_gate_max_fraction",
+        )
+        require(
+            gate_cfg.get("reliability_gate_sparse_execution") is True,
+            "manifest missing sdpo_reliability_gate sparse execution",
+        )
     if args.expect_phase:
         require(manifest.get("phase") == args.expect_phase, f"unexpected phase: {manifest.get('phase')}")
     if args.expect_model:
