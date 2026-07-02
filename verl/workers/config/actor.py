@@ -71,6 +71,16 @@ class SelfDistillationConfig(BaseConfig):
         reliability_gate_max_fraction (Optional[float]): Optional upper bound on the fraction of each
             training batch selected by the reliability gate. Highest-weight eligible targets are
             retained first.
+        reliability_gate_budget_mode (str): Budget mode for gated targets. "sample" keeps the
+            highest-reliability samples up to reliability_gate_max_fraction. "token" keeps the
+            highest reliability-per-teacher-token samples under the scheduled token budget.
+        reliability_gate_schedule (str): Gate schedule mode. "fixed" uses reliability_gate_threshold
+            and reliability_gate_max_fraction for every step. "linear" interpolates from start to end
+            values over training.
+        reliability_gate_start_threshold (Optional[float]): Initial threshold for linear gate scheduling.
+        reliability_gate_end_threshold (Optional[float]): Final threshold for linear gate scheduling.
+        reliability_gate_start_max_fraction (Optional[float]): Initial max fraction for linear gate scheduling.
+        reliability_gate_end_max_fraction (Optional[float]): Final max fraction for linear gate scheduling.
         reliability_gate_sparse_execution (bool): Align gated samples across data-parallel ranks and skip
             student and teacher forwards for rows rejected on every rank.
         reprompt_template_feedback (str): Template for reprompting with feedback but no solution.
@@ -114,6 +124,12 @@ class SelfDistillationConfig(BaseConfig):
     reliability_truncated_weight: float = 0.0
     reliability_gate_threshold: float = 0.0
     reliability_gate_max_fraction: Optional[float] = None
+    reliability_gate_budget_mode: str = "sample"
+    reliability_gate_schedule: str = "fixed"
+    reliability_gate_start_threshold: Optional[float] = None
+    reliability_gate_end_threshold: Optional[float] = None
+    reliability_gate_start_max_fraction: Optional[float] = None
+    reliability_gate_end_max_fraction: Optional[float] = None
     reliability_gate_sparse_execution: bool = True
 
     def __post_init__(self):
@@ -146,9 +162,38 @@ class SelfDistillationConfig(BaseConfig):
         for field_name, value in reliability_fields.items():
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"self_distillation.{field_name} must be in [0,1], got {value}")
-        if self.reliability_gate_threshold > 0 and not self.reliability_weighting:
+        if self.reliability_gate_budget_mode not in {"sample", "token"}:
             raise ValueError(
-                "self_distillation.reliability_gate_threshold requires "
+                "self_distillation.reliability_gate_budget_mode must be one of ['sample', 'token'], "
+                f"got {self.reliability_gate_budget_mode!r}"
+            )
+        if self.reliability_gate_schedule not in {"fixed", "linear"}:
+            raise ValueError(
+                "self_distillation.reliability_gate_schedule must be one of ['fixed', 'linear'], "
+                f"got {self.reliability_gate_schedule!r}"
+            )
+        optional_threshold_fields = {
+            "reliability_gate_start_threshold": self.reliability_gate_start_threshold,
+            "reliability_gate_end_threshold": self.reliability_gate_end_threshold,
+        }
+        for field_name, value in optional_threshold_fields.items():
+            if value is not None and not 0.0 <= value <= 1.0:
+                raise ValueError(f"self_distillation.{field_name} must be in [0,1], got {value}")
+        optional_max_fraction_fields = {
+            "reliability_gate_start_max_fraction": self.reliability_gate_start_max_fraction,
+            "reliability_gate_end_max_fraction": self.reliability_gate_end_max_fraction,
+        }
+        for field_name, value in optional_max_fraction_fields.items():
+            if value is not None and not 0.0 < value <= 1.0:
+                raise ValueError(f"self_distillation.{field_name} must be in (0,1], got {value}")
+        scheduled_thresholds = [
+            self.reliability_gate_threshold,
+            self.reliability_gate_start_threshold or 0.0,
+            self.reliability_gate_end_threshold or 0.0,
+        ]
+        if max(scheduled_thresholds) > 0 and not self.reliability_weighting:
+            raise ValueError(
+                "self_distillation reliability gate thresholds require "
                 "self_distillation.reliability_weighting=True"
             )
         if self.reliability_gate_max_fraction is not None and not (

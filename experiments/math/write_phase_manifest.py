@@ -79,6 +79,12 @@ def main() -> None:
                 "SDPO_ACTIVATION_OFFLOAD",
                 "SDPO_DISTILLATION_TOPK",
                 "RELIABILITY_GATE_MAX_FRACTION",
+                "RELIABILITY_GATE_BUDGET_MODE",
+                "RELIABILITY_GATE_SCHEDULE",
+                "RELIABILITY_GATE_START_THRESHOLD",
+                "RELIABILITY_GATE_END_THRESHOLD",
+                "RELIABILITY_GATE_START_MAX_FRACTION",
+                "RELIABILITY_GATE_END_MAX_FRACTION",
                 "ENFORCE_EAGER",
                 "ROLLOUT_QUANTIZATION",
             ]
@@ -101,6 +107,12 @@ def main() -> None:
             "sdpo_reliability_gate": {
                 "reliability_gate_threshold": os.environ.get("RELIABILITY_GATE_THRESHOLD", "0.4"),
                 "reliability_gate_max_fraction": os.environ.get("RELIABILITY_GATE_MAX_FRACTION", "0.5"),
+                "reliability_gate_budget_mode": os.environ.get("RELIABILITY_GATE_BUDGET_MODE", "token"),
+                "reliability_gate_schedule": os.environ.get("RELIABILITY_GATE_SCHEDULE", "linear"),
+                "reliability_gate_start_threshold": os.environ.get("RELIABILITY_GATE_START_THRESHOLD", "0.25"),
+                "reliability_gate_end_threshold": os.environ.get("RELIABILITY_GATE_END_THRESHOLD", "0.4"),
+                "reliability_gate_start_max_fraction": os.environ.get("RELIABILITY_GATE_START_MAX_FRACTION", "0.6"),
+                "reliability_gate_end_max_fraction": os.environ.get("RELIABILITY_GATE_END_MAX_FRACTION", "0.5"),
                 "reliability_weighting": True,
                 "reliability_gate_sparse_execution": os.environ.get(
                     "RELIABILITY_GATE_SPARSE_EXECUTION", "True"

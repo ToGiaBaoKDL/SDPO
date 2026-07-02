@@ -867,11 +867,8 @@ class DataParallelPPOActor(BasePPOActor):
                     if self_distillation_enabled:
                         self_distillation_mask = model_inputs["self_distillation_mask"]
                         self_distillation_weight = model_inputs.get("self_distillation_weight")
-                        if reliability_gate_threshold > 0:
-                            sparse_target_mask = (
-                                self_distillation_weight >= reliability_gate_threshold
-                            ) & (self_distillation_mask > 0)
-                        elif reliability_weighting:
+                        if reliability_gate_threshold > 0 or reliability_weighting:
+                            # The trainer applies scheduled/token gating and zeros non-target weights.
                             sparse_target_mask = (self_distillation_weight > 0) & (self_distillation_mask > 0)
                         else:
                             sparse_target_mask = self_distillation_mask > 0

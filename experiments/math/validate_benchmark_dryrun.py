@@ -45,6 +45,8 @@ COMMON_SNIPPETS = {
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=False",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction=null",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_budget_mode=sample",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_schedule=fixed",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution=False",
     ],
     "sdpo_reliability": [
@@ -59,6 +61,8 @@ COMMON_SNIPPETS = {
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=True",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_threshold=0.0",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction=null",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_budget_mode=sample",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_schedule=fixed",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution=False",
     ],
     "sdpo_reliability_gate": [
@@ -73,6 +77,12 @@ COMMON_SNIPPETS = {
         "actor_rollout_ref.actor.self_distillation.reliability_weighting=True",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_threshold={reliability_gate_threshold}",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction={reliability_gate_max_fraction}",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_budget_mode={reliability_gate_budget_mode}",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_schedule={reliability_gate_schedule}",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_start_threshold={reliability_gate_start_threshold}",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_end_threshold={reliability_gate_end_threshold}",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_start_max_fraction={reliability_gate_start_max_fraction}",
+        "actor_rollout_ref.actor.self_distillation.reliability_gate_end_max_fraction={reliability_gate_end_max_fraction}",
         "actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution=True",
     ],
 }
@@ -180,9 +190,9 @@ PROFILE_EXPECTATIONS = {
         "enforce_eager": "True",
     },
     ("h200", "quality"): {
-        "train_batch_size": 64,
+        "train_batch_size": 48,
         "agent_workers": 16,
-        "base_model_train_max_samples": 128,
+        "base_model_train_max_samples": 96,
         "max_num_seqs": 96,
         "gpu_util": "0.70",
         "sdpo_max_num_seqs": 64,
@@ -226,6 +236,48 @@ def manifest_gate_max_fraction(manifest: dict | None) -> str:
     return str(max_fraction)
 
 
+def manifest_gate_budget_mode(manifest: dict | None) -> str:
+    if manifest is None:
+        return "token"
+    gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+    return str(gate_cfg.get("reliability_gate_budget_mode", "token"))
+
+
+def manifest_gate_schedule(manifest: dict | None) -> str:
+    if manifest is None:
+        return "linear"
+    gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+    return str(gate_cfg.get("reliability_gate_schedule", "linear"))
+
+
+def manifest_gate_start_threshold(manifest: dict | None) -> str:
+    if manifest is None:
+        return "0.25"
+    gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+    return str(gate_cfg.get("reliability_gate_start_threshold", "0.25"))
+
+
+def manifest_gate_end_threshold(manifest: dict | None) -> str:
+    if manifest is None:
+        return "0.4"
+    gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+    return str(gate_cfg.get("reliability_gate_end_threshold", manifest_gate_threshold(manifest)))
+
+
+def manifest_gate_start_max_fraction(manifest: dict | None) -> str:
+    if manifest is None:
+        return "0.6"
+    gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+    return str(gate_cfg.get("reliability_gate_start_max_fraction", "0.6"))
+
+
+def manifest_gate_end_max_fraction(manifest: dict | None) -> str:
+    if manifest is None:
+        return "0.5"
+    gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
+    return str(gate_cfg.get("reliability_gate_end_max_fraction", manifest_gate_max_fraction(manifest)))
+
+
 def manifest_model(manifest: dict | None) -> str:
     if manifest is None:
         return "Qwen/Qwen3-1.7B"
@@ -265,6 +317,12 @@ def expected_snippets(
     variants: list[str],
     reliability_gate_threshold: str,
     reliability_gate_max_fraction: str,
+    reliability_gate_budget_mode: str,
+    reliability_gate_schedule: str,
+    reliability_gate_start_threshold: str,
+    reliability_gate_end_threshold: str,
+    reliability_gate_start_max_fraction: str,
+    reliability_gate_end_max_fraction: str,
     model: str,
     train_steps: str,
     rollout_tp: str,
@@ -287,6 +345,12 @@ def expected_snippets(
             snippet.format(
                 reliability_gate_threshold=reliability_gate_threshold,
                 reliability_gate_max_fraction=reliability_gate_max_fraction,
+                reliability_gate_budget_mode=reliability_gate_budget_mode,
+                reliability_gate_schedule=reliability_gate_schedule,
+                reliability_gate_start_threshold=reliability_gate_start_threshold,
+                reliability_gate_end_threshold=reliability_gate_end_threshold,
+                reliability_gate_start_max_fraction=reliability_gate_start_max_fraction,
+                reliability_gate_end_max_fraction=reliability_gate_end_max_fraction,
                 model=model,
                 train_steps=train_steps,
             )
@@ -337,6 +401,12 @@ def main() -> None:
     variants = manifest_variants(manifest) or list(COMMON_SNIPPETS)
     reliability_gate_threshold = manifest_gate_threshold(manifest)
     reliability_gate_max_fraction = manifest_gate_max_fraction(manifest)
+    reliability_gate_budget_mode = manifest_gate_budget_mode(manifest)
+    reliability_gate_schedule = manifest_gate_schedule(manifest)
+    reliability_gate_start_threshold = manifest_gate_start_threshold(manifest)
+    reliability_gate_end_threshold = manifest_gate_end_threshold(manifest)
+    reliability_gate_start_max_fraction = manifest_gate_start_max_fraction(manifest)
+    reliability_gate_end_max_fraction = manifest_gate_end_max_fraction(manifest)
     model = manifest_model(manifest)
     train_steps = manifest_train_steps(manifest, args.steps)
     rollout_tp = manifest_rollout_tp(manifest, args.phase)
@@ -356,6 +426,12 @@ def main() -> None:
         variants,
         reliability_gate_threshold,
         reliability_gate_max_fraction,
+        reliability_gate_budget_mode,
+        reliability_gate_schedule,
+        reliability_gate_start_threshold,
+        reliability_gate_end_threshold,
+        reliability_gate_start_max_fraction,
+        reliability_gate_end_max_fraction,
         model,
         train_steps,
         rollout_tp,

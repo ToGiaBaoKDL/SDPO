@@ -47,23 +47,29 @@ assert 'SCALE_MODEL_PATH="${SCALE_MODEL_PATH:-Qwen/Qwen3-8B}"' in math_env
 assert 'MODEL_PATH="${MODEL_PATH:-${SCALE_MODEL_PATH:-Qwen/Qwen3-8B}}"' in runner
 for snippet in [
     'VARIANTS="${VARIANTS:-}"',
-    'DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate"',
     'DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"',
     'VARIANTS="${VARIANTS:-${DEFAULT_VARIANTS}}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
     'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"',
     'TRAIN_STEPS="${TRAIN_STEPS:-10}"',
-    'TRAIN_STEPS="${TRAIN_STEPS:-15}"',
     'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
     'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1536}"',
     'EVAL_FREQ="${EVAL_FREQ:-${TRAIN_STEPS}}"',
     'SAVE_FREQ="${SAVE_FREQ:-${TRAIN_STEPS}}"',
     'RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"',
+    'RELIABILITY_GATE_BUDGET_MODE="${RELIABILITY_GATE_BUDGET_MODE:-token}"',
+    'RELIABILITY_GATE_SCHEDULE="${RELIABILITY_GATE_SCHEDULE:-linear}"',
+    'RELIABILITY_GATE_START_THRESHOLD="${RELIABILITY_GATE_START_THRESHOLD:-0.25}"',
+    'RELIABILITY_GATE_END_THRESHOLD="${RELIABILITY_GATE_END_THRESHOLD:-${RELIABILITY_GATE_THRESHOLD}}"',
+    'RELIABILITY_GATE_START_MAX_FRACTION="${RELIABILITY_GATE_START_MAX_FRACTION:-0.6}"',
+    'RELIABILITY_GATE_END_MAX_FRACTION="${RELIABILITY_GATE_END_MAX_FRACTION:-${RELIABILITY_GATE_MAX_FRACTION}}"',
     'RELIABILITY_GATE_SPARSE_EXECUTION="${RELIABILITY_GATE_SPARSE_EXECUTION:-True}"',
     'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
     "ROLLOUT_QUANTIZATION=null",
     'actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}"',
     'actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction="${reliability_gate_max_fraction}"',
+    'actor_rollout_ref.actor.self_distillation.reliability_gate_budget_mode="${reliability_gate_budget_mode}"',
+    'actor_rollout_ref.actor.self_distillation.reliability_gate_schedule="${reliability_gate_schedule}"',
     'actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution="${reliability_gate_sparse_execution}"',
 ]:
     assert snippet in runner, f"benchmark runner missing gate/default logic: {snippet}"
@@ -74,6 +80,8 @@ for snippet in [
     "sdpo_reliability",
     "sdpo_reliability_gate",
     "RELIABILITY_GATE_THRESHOLD",
+    "RELIABILITY_GATE_BUDGET_MODE",
+    "RELIABILITY_GATE_SCHEDULE",
     "ROLLOUT_QUANTIZATION",
     "ROLLOUT_TP",
     "reliability_gate_sparse_execution",
@@ -163,7 +171,11 @@ if importlib.util.find_spec("torch") and importlib.util.find_spec("ray"):
     import torch
     from torch import nn
 
-    from verl.trainer.ppo.ray_trainer import apply_reliability_gate_budget, build_reliability_gate_schedule
+    from verl.trainer.ppo.ray_trainer import (
+        apply_reliability_gate_budget,
+        apply_reliability_gate_token_budget,
+        build_reliability_gate_schedule,
+    )
     from verl.workers.actor.dp_actor import response_only_logits_kwargs
 
     target = torch.tensor([True, False, True, False, True, False, False, False])
@@ -182,6 +194,20 @@ if importlib.util.find_spec("torch") and importlib.util.find_spec("ray"):
     assert budgeted[0] and budgeted[4]
     assert not torch.any(budgeted & ~eligible)
     print("reliability_gate_budget_ok")
+
+    token_counts = torch.tensor([100.0, 10.0, 20.0, 20.0, 100.0, 10.0, 1.0, 10.0])
+    token_budgeted = apply_reliability_gate_token_budget(eligible, weights, token_counts, max_fraction=0.2)
+    assert token_budgeted[1] and token_budgeted[5] and token_budgeted[7]
+    assert not token_budgeted[0] and not token_budgeted[4]
+    assert not torch.any(token_budgeted & ~eligible)
+    oversized = apply_reliability_gate_token_budget(
+        torch.tensor([True, True]),
+        torch.tensor([1.0, 0.8]),
+        torch.tensor([100.0, 100.0]),
+        max_fraction=0.01,
+    )
+    assert not oversized.any()
+    print("reliability_gate_token_budget_ok")
 
     class DummyQwen3(nn.Module):
         config = type("Config", (), {"model_type": "qwen3"})()
@@ -235,6 +261,7 @@ for snippet in [
     "h200:balanced)",
     "h200:quality)",
     "TRAIN_BS=32",
+    "TRAIN_BS=48",
     "TRAIN_BS=64",
     "ROLLOUT_N=2",
     'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
@@ -314,6 +341,8 @@ assert cfg["actor_rollout_ref"]["model"]["lora_rank"] > 0
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_weighting"] is False
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_threshold"] == 0.0
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_max_fraction"] is None
+assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_budget_mode"] == "sample"
+assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_schedule"] == "fixed"
 assert cfg["actor_rollout_ref"]["actor"]["self_distillation"]["reliability_gate_sparse_execution"] is True
 assert cfg["actor_rollout_ref"]["actor"]["response_only_logits"] is True
 assert cfg["actor_rollout_ref"]["actor"]["use_dynamic_bsz"] is False
@@ -422,7 +451,7 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=a100 \
 PHASE=pilot \
 TRAIN_STEPS=1 \
-VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate" \
+VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_dryrun \
 EXP_SUFFIX=cpu_pipeline_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_dryrun" \
@@ -438,7 +467,7 @@ DRY_RUN=1 \
 HARDWARE_PROFILE=h100 \
 PHASE=pilot \
 TRAIN_STEPS=1 \
-VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate" \
+VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate" \
 RUN_TAG=cpu_pipeline_h100_dryrun \
 EXP_SUFFIX=cpu_pipeline_h100_dryrun_seed42 \
 LOG_DIR="${PROJECT_ROOT}/logs/sdpo_math_phase/cpu_pipeline_h100_dryrun" \

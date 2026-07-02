@@ -90,20 +90,33 @@ L_gate =
       )
 ```
 
-The gate is:
+The gate is adaptive over training:
 
 ```text
-g_i = 1[w_i >= tau] and selected_by_batch_budget(i)
+p_t = (t - 1) / max(T - 1, 1)
+tau_t = tau_start + p_t * (tau_end - tau_start)
+rho_t = rho_start + p_t * (rho_end - rho_start)
+eligible_i = 1[w_i >= tau_t]
+utility_i = w_i / max(teacher_tokens_i, 1)
+g_i = greedy_top_utility_under_token_budget(eligible_i, utility_i, rho_t)
 ```
 
 with:
 
 ```text
-tau = 0.4
-max selected fraction = 0.5
+tau_start = 0.25
+tau_end = 0.4
+rho_start = 0.6
+rho_end = 0.5
 ```
 
-The batch budget keeps the highest-reliability eligible rows when too many samples pass the threshold.
+The token budget keeps the highest reliability-per-teacher-token rows when eligible targets would exceed the active budget:
+
+```text
+sum_i g_i * teacher_tokens_i <= rho_t * sum_i teacher_tokens_i
+```
+
+This uses the same active budget `rho_t` as the old sample gate, but spends it on teacher tokens rather than sample count.
 
 ## Reliability Weights
 
@@ -117,7 +130,7 @@ The implementation assigns a reliability weight to each SDPO target:
 | Truncated output | `0.0` | Unsafe target; should not be imitated. |
 | No solution and no feedback | `0.0` | No useful SDPO target. |
 
-With the default gate threshold `tau = 0.4`, the gate keeps verified peer solutions and safe correctness-feedback targets, but skips pure format-feedback and truncated targets.
+At the beginning of training, the lower threshold keeps more useful correction targets while the model is weak. By the final step, the threshold reaches `0.4`, keeping verified peer solutions and safe correctness-feedback targets while skipping pure format-feedback and truncated targets.
 
 ## Why This Improves SDPO
 
@@ -174,12 +187,12 @@ export HARDWARE_PROFILE=h200
 
 | Setting | Value |
 |---|---:|
-| Train steps | `15` |
+| Train steps | `10` |
 | Train max samples | `1536` |
 | Val max samples | `128` |
-| Train batch size | `64` |
+| Train batch size | `48` |
 | Rollouts per prompt | `2` |
-| Effective rollouts per step | `128` |
+| Effective rollouts per step | `96` |
 | Agent workers | `16` |
 | Response length | `2048` |
 | Rollout max model length | `6144` |
@@ -195,11 +208,17 @@ export HARDWARE_PROFILE=h200
 | Distillation top-k | `50` |
 | Reliability gate threshold | `0.4` |
 | Reliability gate max fraction | `0.5` |
+| Reliability gate budget mode | `token` |
+| Reliability gate schedule | `linear` |
+| Reliability gate start threshold | `0.25` |
+| Reliability gate end threshold | `0.4` |
+| Reliability gate start max fraction | `0.6` |
+| Reliability gate end max fraction | `0.5` |
 
 Reasoning:
 
 - `Qwen3-8B` is strong enough for math while still trainable with 2 GPUs.
-- `train_batch_size=64` improves GPU utilization on H200 without making SDPO target tensors too large.
+- `train_batch_size=48` improves GPU utilization on H200 without making SDPO target tensors too large.
 - `val_max_samples=128` reduces validation cost while still giving a useful signal during constrained thesis runs.
 - `response_len=2048` keeps enough room for math reasoning, but the prompt asks for concise reasoning and boxed final answers.
 - Qwen3 thinking mode is disabled to reduce rambling and improve throughput.
@@ -276,10 +295,16 @@ sparse_target_execution = True
 reliability_weighting = True
 reliability_gate_threshold = 0.4
 reliability_gate_max_fraction = 0.5
+reliability_gate_budget_mode = token
+reliability_gate_schedule = linear
+reliability_gate_start_threshold = 0.25
+reliability_gate_end_threshold = 0.4
+reliability_gate_start_max_fraction = 0.6
+reliability_gate_end_max_fraction = 0.5
 reliability_gate_sparse_execution = True
 ```
 
-This is the proposed improvement. It uses the same feedback source as vanilla SDPO, but applies a reliability weight and a sparse reliability gate.
+This is the proposed improvement. It uses the same feedback source as vanilla SDPO, but applies a reliability weight and an adaptive token-budgeted sparse reliability gate.
 
 ## Metrics To Report
 
@@ -310,11 +335,14 @@ SDPO metrics:
 | `sdpo_reprompt_fraction` | Fraction of samples with SDPO reprompt targets. |
 | `sdpo_feedback_used_fraction` | Fraction of samples where feedback was used. |
 | `sdpo_reliability_weight_mean` | Average reliability weight. |
-| `sdpo_reliability_gate_threshold` | Active threshold, normally `0.4`. |
-| `sdpo_reliability_gate_max_fraction` | Batch budget, normally `0.5`. |
+| `sdpo_reliability_gate_threshold` | Active scheduled threshold for the current step. |
+| `sdpo_reliability_gate_budget_mode_token` | `1.0` means token-budgeted gate, `0.0` means sample-budgeted gate. |
+| `sdpo_reliability_gate_schedule_progress` | Linear schedule progress from `0.0` to `1.0`. |
+| `sdpo_reliability_gate_max_fraction` | Active scheduled batch budget. |
 | `sdpo_reliability_gate_eligible_fraction` | Fraction passing the reliability threshold. |
 | `sdpo_reliability_gate_fraction` | Fraction actually selected as SDPO targets. |
 | `sdpo_reliability_gate_compute_fraction` | Fraction computed after DP alignment. |
+| `sdpo_reliability_gate_target_token_fraction` | Teacher-token fraction selected as SDPO targets before DP alignment. |
 | `sdpo_reliability_gate_compute_token_fraction` | Token fraction spent on gated SDPO compute. |
 
 ## Expected Interpretation

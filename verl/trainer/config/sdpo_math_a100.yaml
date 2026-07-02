@@ -85,6 +85,12 @@ actor_rollout_ref:
       reliability_truncated_weight: 0.0
       reliability_gate_threshold: 0.0
       reliability_gate_max_fraction: null
+      reliability_gate_budget_mode: sample
+      reliability_gate_schedule: fixed
+      reliability_gate_start_threshold: null
+      reliability_gate_end_threshold: null
+      reliability_gate_start_max_fraction: null
+      reliability_gate_end_max_fraction: null
       reliability_gate_sparse_execution: True
       is_clip: 2.0
 

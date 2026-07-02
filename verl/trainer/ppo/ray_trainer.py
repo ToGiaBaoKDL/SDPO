@@ -358,6 +358,113 @@ def apply_reliability_gate_budget(
     return selected_mask
 
 
+def apply_reliability_gate_token_budget(
+    eligible_mask: torch.Tensor,
+    reliability_weight: torch.Tensor,
+    token_count: torch.Tensor,
+    max_fraction: Optional[float],
+) -> torch.Tensor:
+    """Retain reliable rows by greedy reliability-per-token under a teacher-token budget."""
+    if eligible_mask.ndim != 1 or eligible_mask.dtype != torch.bool:
+        raise ValueError("eligible_mask must be a one-dimensional boolean tensor")
+    if reliability_weight.ndim != 1 or reliability_weight.shape != eligible_mask.shape:
+        raise ValueError("reliability_weight must match eligible_mask")
+    if token_count.ndim != 1 or token_count.shape != eligible_mask.shape:
+        raise ValueError("token_count must match eligible_mask")
+    if max_fraction is None:
+        return eligible_mask
+    if not 0.0 < max_fraction <= 1.0:
+        raise ValueError(f"reliability gate token max_fraction must be in (0,1], got {max_fraction}")
+
+    eligible_mask_cpu = eligible_mask.detach().cpu()
+    eligible_indices = torch.nonzero(eligible_mask_cpu, as_tuple=False).flatten()
+    if eligible_indices.numel() == 0:
+        return eligible_mask
+
+    safe_token_count = token_count.detach().float().cpu().clamp(min=1.0)
+    token_budget = max(1.0, float(safe_token_count.sum().item()) * float(max_fraction))
+    reliability_weight_cpu = reliability_weight.detach().float().cpu()
+    utility = reliability_weight_cpu / safe_token_count
+    priority = torch.argsort(utility[eligible_indices], descending=True, stable=True)
+    ordered_indices = eligible_indices[priority].tolist()
+
+    selected_mask = torch.zeros_like(eligible_mask)
+    used_tokens = 0.0
+    selected_indices: list[int] = []
+    for idx in ordered_indices:
+        candidate_tokens = float(safe_token_count[idx].item())
+        if used_tokens + candidate_tokens <= token_budget:
+            selected_indices.append(idx)
+            used_tokens += candidate_tokens
+    if selected_indices:
+        selected_mask[torch.tensor(selected_indices, dtype=torch.long, device=eligible_mask.device)] = True
+    return selected_mask
+
+
+def _optional_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+    if value is None:
+        return default
+    return float(value)
+
+
+def reliability_gate_schedule_progress(current_step: int, total_steps: int) -> float:
+    """Map training step to [0, 1] for deterministic gate scheduling."""
+    if total_steps <= 1:
+        return 0.0
+    current_step = max(1, min(int(current_step), int(total_steps)))
+    return (current_step - 1) / max(total_steps - 1, 1)
+
+
+def resolve_reliability_gate_schedule(
+    self_distillation_cfg: Any,
+    current_step: int,
+    total_steps: int,
+) -> tuple[float, Optional[float], dict[str, float]]:
+    """Resolve the active reliability gate threshold and budget for this training step."""
+    base_threshold = float(self_distillation_cfg.get("reliability_gate_threshold", 0.0) or 0.0)
+    base_max_fraction = _optional_float(self_distillation_cfg.get("reliability_gate_max_fraction", None))
+    schedule = str(self_distillation_cfg.get("reliability_gate_schedule", "fixed") or "fixed").lower()
+    progress = reliability_gate_schedule_progress(current_step, total_steps)
+
+    if schedule == "fixed":
+        threshold = base_threshold
+        max_fraction = base_max_fraction
+    elif schedule == "linear":
+        start_threshold = _optional_float(
+            self_distillation_cfg.get("reliability_gate_start_threshold", None),
+            base_threshold,
+        )
+        end_threshold = _optional_float(
+            self_distillation_cfg.get("reliability_gate_end_threshold", None),
+            base_threshold,
+        )
+        start_max_fraction = _optional_float(
+            self_distillation_cfg.get("reliability_gate_start_max_fraction", None),
+            base_max_fraction,
+        )
+        end_max_fraction = _optional_float(
+            self_distillation_cfg.get("reliability_gate_end_max_fraction", None),
+            base_max_fraction,
+        )
+        threshold = float(start_threshold + (end_threshold - start_threshold) * progress)
+        if start_max_fraction is None or end_max_fraction is None:
+            max_fraction = base_max_fraction
+        else:
+            max_fraction = float(start_max_fraction + (end_max_fraction - start_max_fraction) * progress)
+    else:
+        raise ValueError(f"Unknown reliability_gate_schedule={schedule!r}. Use 'fixed' or 'linear'.")
+
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError(f"Scheduled reliability gate threshold must be in [0,1], got {threshold}")
+    if max_fraction is not None and not 0.0 < max_fraction <= 1.0:
+        raise ValueError(f"Scheduled reliability gate max_fraction must be in (0,1], got {max_fraction}")
+
+    metrics = {
+        "self_distillation/reliability_gate_schedule_progress": float(progress),
+    }
+    return threshold, max_fraction, metrics
+
+
 class RayPPOTrainer:
     """Distributed PPO trainer using Ray for scalable reinforcement learning.
 
@@ -813,7 +920,11 @@ class RayPPOTrainer:
         if self_distillation_cfg is None or loss_mode != "sdpo":
             return batch, {}
 
-        threshold = float(self_distillation_cfg.get("reliability_gate_threshold", 0.0) or 0.0)
+        threshold, max_fraction, gate_schedule_metrics = resolve_reliability_gate_schedule(
+            self_distillation_cfg,
+            current_step=int(getattr(self, "global_steps", 1)),
+            total_steps=int(getattr(self, "total_training_steps", 1) or 1),
+        )
         if "self_distillation_mask" not in batch.batch:
             raise ValueError("sparse SDPO execution requires a self-distillation target mask")
         if self.config.actor_rollout_ref.actor.get("shuffle", False):
@@ -822,13 +933,25 @@ class RayPPOTrainer:
         distillation_mask = batch.batch["self_distillation_mask"] > 0
         reliability_weighting = bool(self_distillation_cfg.get("reliability_weighting", False))
         weight = batch.batch.get("self_distillation_weight")
+        budget_mode = str(self_distillation_cfg.get("reliability_gate_budget_mode", "sample") or "sample").lower()
         if threshold > 0:
             if weight is None:
                 raise ValueError("reliability-gated SDPO requires reliability weights")
             eligible_mask = (weight >= threshold) & distillation_mask
-            max_fraction = self_distillation_cfg.get("reliability_gate_max_fraction", None)
-            max_fraction = float(max_fraction) if max_fraction is not None else None
-            target_mask = apply_reliability_gate_budget(eligible_mask, weight, max_fraction)
+            if budget_mode == "sample":
+                target_mask = apply_reliability_gate_budget(eligible_mask, weight, max_fraction)
+            elif budget_mode == "token":
+                teacher_token_count = batch.batch["teacher_attention_mask"].float().sum(dim=1)
+                target_mask = apply_reliability_gate_token_budget(
+                    eligible_mask,
+                    weight,
+                    teacher_token_count,
+                    max_fraction,
+                )
+            else:
+                raise ValueError(
+                    f"Unknown reliability_gate_budget_mode={budget_mode!r}. Use 'sample' or 'token'."
+                )
             sparse_execution = bool(self_distillation_cfg.get("reliability_gate_sparse_execution", True))
         elif reliability_weighting:
             if weight is None:
@@ -905,6 +1028,9 @@ class RayPPOTrainer:
         if threshold > 0:
             metrics.update(
                 {
+                    **gate_schedule_metrics,
+                    "self_distillation/reliability_gate_threshold": threshold,
+                    "self_distillation/reliability_gate_budget_mode_token": float(budget_mode == "token"),
                     "self_distillation/reliability_gate_sparse_execution": float(sparse_execution),
                     "self_distillation/reliability_gate_max_fraction": (
                         float(max_fraction) if max_fraction is not None else 1.0
@@ -918,6 +1044,9 @@ class RayPPOTrainer:
                     ],
                     "self_distillation/reliability_gate_alignment_overhead_fraction": metrics[
                         "self_distillation/sparse_alignment_overhead_fraction"
+                    ],
+                    "self_distillation/reliability_gate_target_teacher_token_fraction": metrics[
+                        "self_distillation/sparse_target_teacher_token_fraction"
                     ],
                     "self_distillation/reliability_gate_compute_teacher_token_fraction": metrics[
                         "self_distillation/sparse_compute_teacher_token_fraction"
@@ -972,7 +1101,11 @@ class RayPPOTrainer:
 
         weight_tensor = torch.tensor(weights, dtype=torch.float32, device=device)
         nonzero = weight_tensor > 0
-        gate_threshold = float(self_distillation_cfg.get("reliability_gate_threshold", 0.0) or 0.0)
+        gate_threshold, _, gate_schedule_metrics = resolve_reliability_gate_schedule(
+            self_distillation_cfg,
+            current_step=int(getattr(self, "global_steps", 1)),
+            total_steps=int(getattr(self, "total_training_steps", 1) or 1),
+        )
         batch_size = max(len(weights), 1)
         metrics = {
             "self_distillation/reliability_weight_mean": weight_tensor.mean().item() if len(weights) > 0 else 0.0,
@@ -986,6 +1119,7 @@ class RayPPOTrainer:
             gated = weight_tensor >= gate_threshold
             metrics.update(
                 {
+                    **gate_schedule_metrics,
                     "self_distillation/reliability_gate_threshold": gate_threshold,
                     "self_distillation/reliability_gate_eligible_fraction": gated.float().mean().item()
                     if len(weights) > 0

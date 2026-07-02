@@ -22,6 +22,12 @@ VERIFY_PHASE_MODEL="${VERIFY_PHASE_MODEL:-1}"
 HARDWARE_PROFILE="${HARDWARE_PROFILE:-a100}"
 RELIABILITY_GATE_THRESHOLD="${RELIABILITY_GATE_THRESHOLD:-0.4}"
 RELIABILITY_GATE_MAX_FRACTION="${RELIABILITY_GATE_MAX_FRACTION:-0.5}"
+RELIABILITY_GATE_BUDGET_MODE="${RELIABILITY_GATE_BUDGET_MODE:-token}"
+RELIABILITY_GATE_SCHEDULE="${RELIABILITY_GATE_SCHEDULE:-linear}"
+RELIABILITY_GATE_START_THRESHOLD="${RELIABILITY_GATE_START_THRESHOLD:-0.25}"
+RELIABILITY_GATE_END_THRESHOLD="${RELIABILITY_GATE_END_THRESHOLD:-${RELIABILITY_GATE_THRESHOLD}}"
+RELIABILITY_GATE_START_MAX_FRACTION="${RELIABILITY_GATE_START_MAX_FRACTION:-0.6}"
+RELIABILITY_GATE_END_MAX_FRACTION="${RELIABILITY_GATE_END_MAX_FRACTION:-${RELIABILITY_GATE_MAX_FRACTION}}"
 RELIABILITY_GATE_SPARSE_EXECUTION="${RELIABILITY_GATE_SPARSE_EXECUTION:-True}"
 SDPO_SPARSE_TARGET_EXECUTION="${SDPO_SPARSE_TARGET_EXECUTION:-True}"
 
@@ -35,6 +41,24 @@ for boolean_name in RELIABILITY_GATE_SPARSE_EXECUTION SDPO_SPARSE_TARGET_EXECUTI
       ;;
   esac
 done
+
+case "${RELIABILITY_GATE_SCHEDULE}" in
+  fixed|linear)
+    ;;
+  *)
+    echo "RELIABILITY_GATE_SCHEDULE must be fixed or linear." >&2
+    exit 1
+    ;;
+esac
+
+case "${RELIABILITY_GATE_BUDGET_MODE}" in
+  sample|token)
+    ;;
+  *)
+    echo "RELIABILITY_GATE_BUDGET_MODE must be sample or token." >&2
+    exit 1
+    ;;
+esac
 
 case "${HARDWARE_PROFILE}" in
   a100|h100|h200)
@@ -124,6 +148,9 @@ case "${MODEL_PATH}" in
 esac
 
 export CUDA_VISIBLE_DEVICES LOGGER MODEL_PATH HARDWARE_PROFILE RELIABILITY_GATE_THRESHOLD RELIABILITY_GATE_MAX_FRACTION
+export RELIABILITY_GATE_BUDGET_MODE
+export RELIABILITY_GATE_SCHEDULE RELIABILITY_GATE_START_THRESHOLD RELIABILITY_GATE_END_THRESHOLD
+export RELIABILITY_GATE_START_MAX_FRACTION RELIABILITY_GATE_END_MAX_FRACTION
 export RELIABILITY_GATE_SPARSE_EXECUTION SDPO_SPARSE_TARGET_EXECUTION ROLLOUT_TP ROLLOUT_QUANTIZATION
 export TRAIN_MAX_SAMPLES VAL_MAX_SAMPLES SEED
 
@@ -142,6 +169,12 @@ echo "phase=${PHASE} model=${MODEL_PATH} variants=${VARIANTS} dry_run=${DRY_RUN}
 echo "hardware=${HARDWARE_PROFILE}"
 echo "reliability_gate_threshold=${RELIABILITY_GATE_THRESHOLD}"
 echo "reliability_gate_max_fraction=${RELIABILITY_GATE_MAX_FRACTION}"
+echo "reliability_gate_budget_mode=${RELIABILITY_GATE_BUDGET_MODE}"
+echo "reliability_gate_schedule=${RELIABILITY_GATE_SCHEDULE}"
+echo "reliability_gate_start_threshold=${RELIABILITY_GATE_START_THRESHOLD}"
+echo "reliability_gate_end_threshold=${RELIABILITY_GATE_END_THRESHOLD}"
+echo "reliability_gate_start_max_fraction=${RELIABILITY_GATE_START_MAX_FRACTION}"
+echo "reliability_gate_end_max_fraction=${RELIABILITY_GATE_END_MAX_FRACTION}"
 echo "reliability_gate_sparse_execution=${RELIABILITY_GATE_SPARSE_EXECUTION}"
 echo "sdpo_sparse_target_execution=${SDPO_SPARSE_TARGET_EXECUTION}"
 echo "sdpo_rollout_memory=batched_tokens:${SDPO_BATCHED_TOKENS} max_num_seqs:${SDPO_MAX_NUM_SEQS} gpu_util:${SDPO_GPU_UTIL}"
@@ -293,6 +326,12 @@ run_sdpo_variant() {
   local reliability=False
   local reliability_gate_threshold=0.0
   local reliability_gate_max_fraction=null
+  local reliability_gate_budget_mode=sample
+  local reliability_gate_schedule=fixed
+  local reliability_gate_start_threshold=null
+  local reliability_gate_end_threshold=null
+  local reliability_gate_start_max_fraction=null
+  local reliability_gate_end_max_fraction=null
   local reliability_gate_sparse_execution=False
 
   case "${variant}" in
@@ -305,6 +344,12 @@ run_sdpo_variant() {
       reliability=True
       reliability_gate_threshold="${RELIABILITY_GATE_THRESHOLD}"
       reliability_gate_max_fraction="${RELIABILITY_GATE_MAX_FRACTION}"
+      reliability_gate_budget_mode="${RELIABILITY_GATE_BUDGET_MODE}"
+      reliability_gate_schedule="${RELIABILITY_GATE_SCHEDULE}"
+      reliability_gate_start_threshold="${RELIABILITY_GATE_START_THRESHOLD}"
+      reliability_gate_end_threshold="${RELIABILITY_GATE_END_THRESHOLD}"
+      reliability_gate_start_max_fraction="${RELIABILITY_GATE_START_MAX_FRACTION}"
+      reliability_gate_end_max_fraction="${RELIABILITY_GATE_END_MAX_FRACTION}"
       reliability_gate_sparse_execution="${RELIABILITY_GATE_SPARSE_EXECUTION}"
       ;;
     *)
@@ -334,6 +379,12 @@ run_sdpo_variant() {
       actor_rollout_ref.actor.self_distillation.reliability_weighting="${reliability}" \
       actor_rollout_ref.actor.self_distillation.reliability_gate_threshold="${reliability_gate_threshold}" \
       actor_rollout_ref.actor.self_distillation.reliability_gate_max_fraction="${reliability_gate_max_fraction}" \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_budget_mode="${reliability_gate_budget_mode}" \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_schedule="${reliability_gate_schedule}" \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_start_threshold="${reliability_gate_start_threshold}" \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_end_threshold="${reliability_gate_end_threshold}" \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_start_max_fraction="${reliability_gate_start_max_fraction}" \
+      actor_rollout_ref.actor.self_distillation.reliability_gate_end_max_fraction="${reliability_gate_end_max_fraction}" \
       actor_rollout_ref.actor.self_distillation.reliability_gate_sparse_execution="${reliability_gate_sparse_execution}" \
       "${RAY_LOG_TO_DRIVER_OVERRIDE[@]}" \
       "${COMMON_OVERRIDES[@]}" \

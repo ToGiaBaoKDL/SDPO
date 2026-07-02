@@ -95,6 +95,14 @@ def main() -> None:
             "manifest missing sdpo_reliability_gate reliability_gate_threshold",
         )
         require(
+            gate_cfg.get("reliability_gate_budget_mode") in {"sample", "token"},
+            "manifest missing sdpo_reliability_gate reliability_gate_budget_mode",
+        )
+        require(
+            gate_cfg.get("reliability_gate_schedule") in {"fixed", "linear"},
+            "manifest missing sdpo_reliability_gate reliability_gate_schedule",
+        )
+        require(
             gate_cfg.get("reliability_gate_max_fraction") not in (None, ""),
             "manifest missing sdpo_reliability_gate reliability_gate_max_fraction",
         )
@@ -131,6 +139,14 @@ def main() -> None:
                 "sdpo_reliability_gate missing gate threshold metric",
             )
             require(
+                row.get("sdpo_reliability_gate_budget_mode_token", "") != "",
+                "sdpo_reliability_gate missing gate budget-mode metric",
+            )
+            require(
+                row.get("sdpo_reliability_gate_schedule_progress", "") != "",
+                "sdpo_reliability_gate missing gate schedule-progress metric",
+            )
+            require(
                 row.get("sdpo_reliability_gate_max_fraction", "") != "",
                 "sdpo_reliability_gate missing gate max-fraction metric",
             )
@@ -145,6 +161,10 @@ def main() -> None:
             require(
                 row.get("sdpo_reliability_gate_compute_fraction", "") != "",
                 "sdpo_reliability_gate missing gate compute fraction metric",
+            )
+            require(
+                row.get("sdpo_reliability_gate_target_token_fraction", "") != "",
+                "sdpo_reliability_gate missing gate target token fraction metric",
             )
             require(
                 row.get("sdpo_reliability_gate_compute_token_fraction", "") != "",

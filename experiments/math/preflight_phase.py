@@ -100,6 +100,7 @@ def main() -> None:
         "h200:balanced)",
         "h200:quality)",
         "TRAIN_BS=32",
+        "TRAIN_BS=48",
         "TRAIN_BS=64",
         "ROLLOUT_N=2",
         'AGENT_WORKERS="${AGENT_WORKERS:-8}"',
@@ -117,7 +118,6 @@ def main() -> None:
         'MAX_NUM_SEQS="${MAX_NUM_SEQS:-96}"',
         'SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-32768}"',
         'SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-131072}"',
-        'SDPO_BATCHED_TOKENS="${SDPO_BATCHED_TOKENS:-196608}"',
         'SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-32}"',
         'SDPO_MAX_NUM_SEQS="${SDPO_MAX_NUM_SEQS:-64}"',
         'SDPO_GPU_UTIL="${SDPO_GPU_UTIL:-0.58}"',
@@ -181,7 +181,6 @@ def main() -> None:
     runner = Path(runner_path).read_text(encoding="utf-8")
     for snippet in [
         'VARIANTS="${VARIANTS:-}"',
-        'DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability sdpo_reliability_gate"',
         'DEFAULT_VARIANTS="base_rl sdpo_vanilla sdpo_reliability_gate"',
         'VARIANTS="${VARIANTS:-${DEFAULT_VARIANTS}}"',
         "scale_decision)",
@@ -192,7 +191,6 @@ def main() -> None:
         'TRAIN_STEPS="${TRAIN_STEPS:-12}"',
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-256}"',
         'TRAIN_STEPS="${TRAIN_STEPS:-10}"',
-        'TRAIN_STEPS="${TRAIN_STEPS:-15}"',
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1024}"',
         'TRAIN_MAX_SAMPLES="${TRAIN_MAX_SAMPLES:-1536}"',
         'ROLLOUT_TP="${ROLLOUT_TP:-2}"',
@@ -207,8 +205,16 @@ def main() -> None:
         "BASE_MODEL_TRAIN_MAX_SAMPLES",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "RELIABILITY_GATE_THRESHOLD",
+        "RELIABILITY_GATE_BUDGET_MODE",
+        "RELIABILITY_GATE_SCHEDULE",
+        "RELIABILITY_GATE_START_THRESHOLD",
+        "RELIABILITY_GATE_END_THRESHOLD",
+        "RELIABILITY_GATE_START_MAX_FRACTION",
+        "RELIABILITY_GATE_END_MAX_FRACTION",
         "RELIABILITY_GATE_SPARSE_EXECUTION",
         "reliability_gate_threshold",
+        "reliability_gate_budget_mode",
+        "reliability_gate_schedule",
         "reliability_gate_sparse_execution",
         "sdpo_reliability",
         "sdpo_reliability_gate",
@@ -223,6 +229,8 @@ def main() -> None:
         "sdpo_reliability_gate",
         "reliability_weighting",
         "RELIABILITY_GATE_THRESHOLD",
+        "RELIABILITY_GATE_BUDGET_MODE",
+        "RELIABILITY_GATE_SCHEDULE",
         "ROLLOUT_QUANTIZATION",
         "SDPO_GPU_UTIL",
         "SDPO_ACTOR_LEN",
@@ -236,12 +244,13 @@ def main() -> None:
     report_ready_path = "experiments/math/check_phase_report_ready.py"
     report_ready = Path(report_ready_path).read_text(encoding="utf-8")
     for snippet in [
-        'REQUIRED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability_gate"}',
-        'OPTIONAL_VARIANTS = {"sdpo_reliability"}',
+        'ALLOWED_VARIANTS = {"base_rl", "sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"}',
         "reliability_weighting",
         "sdpo_reliability",
         "sdpo_reliability_gate",
         "reliability_gate_threshold",
+        "reliability_gate_budget_mode",
+        "reliability_gate_schedule",
         "reliability_gate_compute_fraction",
     ]:
         require_snippet(report_ready_path, report_ready, snippet)
@@ -272,6 +281,7 @@ def main() -> None:
         'self._progress_heartbeat("actor_update_done")',
         "build_reliability_gate_schedule",
         "apply_reliability_gate_budget",
+        "apply_reliability_gate_token_budget",
         "_prepare_sparse_self_distillation_actor_batch",
         "self_distillation_sparse_compute_mask",
     ]:
@@ -315,6 +325,9 @@ def main() -> None:
         '"timing_s/old_log_prob": "oldlp_s"',
         '"response_length/mean": "resp_tok"',
         '"self_distillation/reliability_gate_compute_fraction": "gate_compute"',
+        '"self_distillation/reliability_gate_budget_mode_token": "gate_tok_mode"',
+        '"self_distillation/reliability_gate_target_teacher_token_fraction": "gate_target_tok"',
+        '"self_distillation/reliability_gate_schedule_progress": "gate_prog"',
         '"timing_s/ema_teacher_update": "ema_s"',
         "read_jsonl_from",
     ]:
@@ -330,6 +343,9 @@ def main() -> None:
         "response_length_clip_ratio",
         "sdpo_reliability_gate_compute_fraction",
         "sdpo_reliability_gate_compute_token_fraction",
+        "sdpo_reliability_gate_budget_mode_token",
+        "sdpo_reliability_gate_target_token_fraction",
+        "sdpo_reliability_gate_schedule_progress",
         "ema_teacher_update_s",
         'data.get("timing_s/update_actor", "")',
     ]:
