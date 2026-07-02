@@ -68,6 +68,10 @@ def main() -> None:
     require(manifest.get("config_name") == "sdpo_math_a100", f"unexpected config_name: {manifest.get('config_name')}")
     require(manifest.get("profile_settings"), "manifest missing profile_settings")
     require(manifest.get("effective_rollouts_per_step"), "manifest missing effective_rollouts_per_step")
+    trajectory_cfg = manifest.get("trajectory_logging") or {}
+    trajectory_max_samples = int(trajectory_cfg.get("max_samples") or 0)
+    if trajectory_max_samples > 0:
+        require(trajectory_cfg.get("data_dir"), "manifest missing trajectory_logging.data_dir")
     for variant in {"sdpo_vanilla", "sdpo_reliability", "sdpo_reliability_gate"} & manifest_variants:
         variant_cfg = manifest.get("variant_hyperparameters", {}).get(variant, {})
         require(
@@ -131,6 +135,28 @@ def main() -> None:
         if variant.startswith("sdpo_"):
             require(row["sdpo_reprompt_fraction"] != "", f"{variant} missing SDPO reprompt metric")
             require(row["sdpo_feedback_used_fraction"] != "", f"{variant} missing SDPO feedback-used metric")
+            if trajectory_max_samples > 0:
+                trajectory_path = args.log_dir / "trajectories" / f"{variant}.jsonl"
+                require(trajectory_path.exists(), f"{variant} missing trajectory log: {trajectory_path}")
+                first_line = trajectory_path.read_text(encoding="utf-8").splitlines()
+                require(first_line, f"{variant} trajectory log is empty: {trajectory_path}")
+                trajectory_record = json.loads(first_line[0])
+                for key in [
+                    "trajectory_schema_version",
+                    "prompt_id",
+                    "original_response",
+                    "feedback_used",
+                    "reprompt_prompt",
+                    "teacher_response_generated",
+                    "sdpo_target_response",
+                    "gate_selected_reason",
+                    "gate_formula",
+                ]:
+                    require(key in trajectory_record, f"{variant} trajectory missing {key}: {trajectory_path}")
+                require(
+                    "active_distillation_loss" in trajectory_record["gate_formula"],
+                    f"{variant} trajectory missing active distillation formula: {trajectory_path}",
+                )
         if variant in {"sdpo_reliability", "sdpo_reliability_gate"}:
             require(row["sdpo_reliability_weight_mean"] != "", f"{variant} missing reliability weight metric")
         if variant == "sdpo_reliability_gate":

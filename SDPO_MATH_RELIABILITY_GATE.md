@@ -1,367 +1,432 @@
-# SDPO-Math Reliability Gate
+# Proposed Method and Design: Reliability-Gated SDPO for Mathematical Reasoning
 
-This note documents the SDPO-Math improvement used for the thesis runs: reliability-gated self-distillation. It is the main comparison against Base RL and vanilla SDPO on DAPO-Math.
+This document describes the proposed method used in the thesis experiments:
+**Reliability-Gated Self-Distillation Policy Optimization (RG-SDPO)** for
+mathematical reasoning. The method extends vanilla SDPO by making the
+self-distillation target selective, reliability-weighted, and token-budgeted.
 
-## Goal
+The core motivation is that math feedback is not uniformly reliable. A verified
+peer solution is a strong imitation target, while an incorrect or truncated
+solution can be fluent but harmful. Vanilla SDPO uses feedback-reprompted
+targets whenever they are available, but it does not explicitly distinguish
+between high-confidence and low-confidence targets. RG-SDPO keeps the original
+reinforcement-learning objective intact and modifies only the auxiliary
+self-distillation term.
 
-Vanilla SDPO uses feedback-reprompted model outputs as distillation targets. In math, those targets are not equally reliable:
+## 1. Problem Setting
 
-- A correct peer solution is a strong target.
-- Safe correctness feedback can be useful, but it is weaker than a verified solution.
-- Format feedback is weaker again.
-- Truncated outputs are unsafe to imitate.
-
-Reliability-gated SDPO keeps the SDPO mechanism but makes the target selection feedback-aware. The model still learns from RL reward, but the SDPO loss is applied only to reliable self-distillation targets.
-
-## Compared Variants
-
-| Variant | Objective | Feedback used | Reliability weighting | Reliability gate |
-|---|---|---:|---:|---:|
-| `base_rl` | RL only | no | no | no |
-| `sdpo_vanilla` | RL + SDPO | yes | no | no |
-| `sdpo_reliability_gate` | RL + gated weighted SDPO | yes | yes | yes |
-
-`sdpo_reliability` is still implemented for analysis, but the thesis runbook focuses on the three variants above to save training time.
-
-## Pipeline
-
-For each training prompt, the rollout worker samples multiple answers:
+Let `x_i` denote a math problem sampled from the training set. For each prompt,
+the rollout policy `pi_theta` generates one or more candidate responses
+`y_i = (y_{i,1}, ..., y_{i,T_i})`. A math reward function evaluates the response
+against the reference answer and produces:
 
 ```text
-prompt x
-  -> rollout answers y_1, ..., y_K
-  -> math verifier / reward function scores each answer
-  -> feedback is produced for incorrect or malformed answers
-  -> SDPO builds a teacher reprompt from:
-       original problem
-       successful peer solution, if available
-       correctness/format feedback, if used
-  -> teacher target is used for self-distillation
+r_i = r(x_i, y_i)
 ```
 
-The math reward expects the final answer in `\boxed{...}`. The validation metric is exact/math-verify score on the held-out DAPO-Math validation subset.
+where `r_i = 1` indicates a verified correct answer and `r_i = 0` indicates an
+incorrect, malformed, or truncated response. The reward function also provides
+structured metadata, including parsed answer, format errors, truncation flags,
+and optional feedback text.
 
-## Objective
-
-Let:
-
-- `x` be the math problem.
-- `y` be the student response.
-- `r(x, y)` be the math reward.
-- `A(x, y)` be the RL advantage.
-- `q_phi(. | x, f)` be the SDPO teacher distribution after feedback reprompting.
-- `pi_theta(. | x)` be the current student policy.
-- `m_i` be the SDPO target mask for sample `i`.
-- `w_i` be the reliability weight.
-- `g_i` be the binary reliability gate.
-
-The base RL objective is the usual clipped policy-gradient objective:
+The training objective has two components:
 
 ```text
-L_base = L_RL(pi_theta; A)
+L = L_RL + lambda * L_SDPO
 ```
 
-Vanilla SDPO adds self-distillation on every available target:
+where `L_RL` is the existing policy-gradient loss used by the RL trainer, and
+`L_SDPO` is an auxiliary self-distillation loss. The proposed method changes the
+masking and weighting of `L_SDPO`; it does not change reward computation or the
+base RL objective.
+
+## 2. Vanilla SDPO
+
+Vanilla SDPO constructs a teacher context by reprompting the model with useful
+information from the rollout group. In this math adaptation, the reprompt may
+include:
+
+- the original problem statement,
+- a verified successful peer solution from another rollout of the same prompt,
+- safe feedback explaining that the boxed final answer is incorrect,
+- format feedback when the final answer is not in `\boxed{...}`.
+
+Let `c_i` denote this reprompt context. The student distribution is evaluated
+under the original prompt context:
 
 ```text
-L_vanilla = L_RL + lambda * L_SDPO
+p^S_{i,t} = pi_theta(. | x_i, y_{i,<t})
 ```
 
-where the implemented SDPO loss is full-logit top-k generalized Jensen-Shannon distillation:
+The teacher distribution is evaluated under the reprompt context:
 
 ```text
-L_SDPO =
-  mean_{i,t} m_i * D_GJS(
-    pi_theta(. | x_i, y_{i,<t}),
-    q_phi(. | x_i, f_i, y_{i,<t})
-  )
+p^T_{i,t} = q_phi(. | c_i, y_{i,<t})
 ```
 
-Reliability-gated SDPO changes the mask and weight:
+In the implementation, `q_phi` is an exponential-moving-average teacher of the
+student policy. The teacher is used in a teacher-forcing manner: the same
+response tokens `y_i` are used for student and teacher likelihood evaluation.
+No additional teacher response is generated inside the actor loss.
+
+Let `a_{i,t}` be the response-token mask and let `m_i` be the vanilla SDPO target
+mask:
 
 ```text
-L_gate =
-  L_RL
-  + lambda * mean_{i,t}
-      m_i * g_i * w_i *
-      D_GJS(
-        pi_theta(. | x_i, y_{i,<t}),
-        q_phi(. | x_i, f_i, y_{i,<t})
-      )
+m_i = 1 if sample i has a usable peer solution or usable feedback, else 0.
 ```
 
-The gate is adaptive over training:
+The vanilla SDPO loss is:
+
+```text
+L_SDPO^vanilla =
+  (1 / Z_v) * sum_i sum_t
+    a_{i,t} * m_i * D_alpha(p^S_{i,t}, p^T_{i,t})
+
+Z_v = sum_i sum_t a_{i,t} * m_i
+```
+
+The active implementation uses full-logit top-k generalized Jensen-Shannon
+distillation. With:
+
+```text
+M_alpha = (1 - alpha) * p^S + alpha * p^T
+```
+
+the divergence is:
+
+```text
+D_alpha(p^S, p^T) =
+  (1 - alpha) * KL(p^S || M_alpha)
+  + alpha * KL(p^T || M_alpha)
+```
+
+The thesis configuration uses:
+
+```text
+alpha = 0.5
+top_k = 50
+tail_mass = enabled
+```
+
+Thus, the loss is a symmetric Jensen-Shannon-style divergence over the top-50
+distillation support plus a residual tail bucket.
+
+## 3. Limitation of Vanilla SDPO in Math
+
+Vanilla SDPO assumes that every available self-distillation target is useful.
+This assumption is weak in mathematical reasoning for three reasons.
+
+First, correctness is sparse and verifiable. A response can contain plausible
+reasoning while still ending with an incorrect answer. Distilling from such a
+target can reinforce invalid reasoning patterns.
+
+Second, feedback types have different epistemic strength. A verified peer
+solution is a much stronger target than generic correctness feedback. Format
+feedback can improve answer presentation, but it provides little information
+about the correct mathematical derivation.
+
+Third, SDPO is computationally expensive. It adds teacher contexts, teacher
+logits, and actor-side distillation computation. Spending this computation on
+low-quality targets reduces both training efficiency and signal quality.
+
+## 4. Proposed RG-SDPO
+
+RG-SDPO introduces two additional variables for each sample:
+
+```text
+w_i in [0, 1]     reliability weight
+g_i in {0, 1}     reliability gate
+```
+
+The reliability weight measures how trustworthy the SDPO target is. The gate
+decides whether that target should be used by the distillation loss at the
+current training step.
+
+The proposed objective is:
+
+```text
+L_SDPO^RG =
+  (1 / Z_g) * sum_i sum_t
+    a_{i,t} * m_i * g_i * w_i * D_alpha(p^S_{i,t}, p^T_{i,t})
+
+Z_g = sum_i sum_t a_{i,t} * m_i * g_i * w_i
+```
+
+and the full optimization objective becomes:
+
+```text
+L_RG-SDPO = L_RL + lambda * L_SDPO^RG
+```
+
+If `g_i = 0` or `w_i = 0`, sample `i` contributes no SDPO loss. The RL reward
+and RL advantage for that sample are still processed normally by `L_RL`.
+
+## 5. Reliability Weighting
+
+The reliability function is deterministic and derived from reward metadata.
+It does not require an external LLM judge.
+
+| Target source | Weight `w_i` | Rationale |
+| --- | ---: | --- |
+| Verified successful peer solution | `1.0` | Strongest target; the solution passed math verification. |
+| Safe correctness feedback | `0.4` | Useful correction signal, but not a complete verified solution. |
+| Format feedback | `0.2` | Helps enforce `\boxed{...}` output format but weak for reasoning. |
+| Truncated response | `0.0` | Unsafe target; the reasoning or final answer is incomplete. |
+| No peer solution and no usable feedback | `0.0` | No reliable SDPO target is available. |
+
+This weighting scheme reflects the relative confidence of each supervision
+source. Verified solutions receive full weight. Feedback-only targets are kept
+as weaker supervision because they can still guide correction, but they should
+not dominate the distillation objective.
+
+## 6. Adaptive Reliability Gate
+
+The reliability threshold is scheduled over training. Let `t` be the current
+training step and `T` be the total number of training steps. Define:
 
 ```text
 p_t = (t - 1) / max(T - 1, 1)
+```
+
+The active reliability threshold is:
+
+```text
 tau_t = tau_start + p_t * (tau_end - tau_start)
+```
+
+The active compute budget is:
+
+```text
 rho_t = rho_start + p_t * (rho_end - rho_start)
-eligible_i = 1[w_i >= tau_t]
-utility_i = w_i / max(teacher_tokens_i, 1)
-g_i = greedy_top_utility_under_token_budget(eligible_i, utility_i, rho_t)
 ```
 
-with:
+A target is eligible when:
 
 ```text
-tau_start = 0.25
-tau_end = 0.4
+e_i = m_i * 1[w_i >= tau_t]
+```
+
+The thesis configuration uses:
+
+```text
+tau_start = 0.2
+tau_end   = 0.4
 rho_start = 0.6
-rho_end = 0.5
+rho_end   = 0.5
 ```
 
-The token budget keeps the highest reliability-per-teacher-token rows when eligible targets would exceed the active budget:
+This schedule implements a simple curriculum. Early training is more permissive
+and can use format-correction targets. Later training is stricter and focuses on
+verified peer solutions and safe correctness feedback.
+
+## 7. Token-Budgeted Target Selection
+
+A sample with a long reprompt and long response is more expensive than a short
+sample. Therefore, RG-SDPO uses a token-budgeted gate instead of selecting
+targets only by sample count.
+
+Let `c_i` be the teacher-token cost of sample `i`, measured from the teacher
+attention mask. The method ranks eligible targets by reliability per teacher
+token:
 
 ```text
-sum_i g_i * teacher_tokens_i <= rho_t * sum_i teacher_tokens_i
+u_i = w_i / max(c_i, 1)
 ```
 
-This uses the same active budget `rho_t` as the old sample gate, but spends it on teacher tokens rather than sample count.
-
-## Reliability Weights
-
-The implementation assigns a reliability weight to each SDPO target:
-
-| Case | Weight | Reason |
-|---|---:|---|
-| Verified successful peer solution | `1.0` | Strongest target; it passed reward verification. |
-| Safe correctness feedback | `0.4` | Useful correction signal, but not a verified solution. |
-| Format feedback | `0.2` | Helps formatting, but weak for reasoning quality. |
-| Truncated output | `0.0` | Unsafe target; should not be imitated. |
-| No solution and no feedback | `0.0` | No useful SDPO target. |
-
-At the beginning of training, the lower threshold keeps more useful correction targets while the model is weak. By the final step, the threshold reaches `0.4`, keeping verified peer solutions and safe correctness-feedback targets while skipping pure format-feedback and truncated targets.
-
-## Why This Improves SDPO
-
-Vanilla SDPO assumes that every reprompted target is beneficial. That assumption is weak in math because an incorrect answer can still produce a long, fluent, misleading solution. Distilling from that target can reinforce wrong reasoning.
-
-Reliability-gated SDPO improves the algorithm in two ways:
-
-1. **Higher-quality SDPO targets**
-   The SDPO loss is concentrated on verified or safer feedback-derived targets. Low-confidence targets are removed from the distillation objective.
-
-2. **Lower SDPO compute**
-   Sparse target execution avoids computing the expensive SDPO branch for many low-reliability samples. This is important because SDPO adds teacher inputs, teacher logits, and actor updates on top of RL rollout generation.
-
-The thesis claim should be phrased as:
+Then it greedily selects targets with high `u_i` under the active token budget:
 
 ```text
-Reliability-gated SDPO improves math-domain self-distillation by making feedback-derived targets selective and reliability-weighted, reducing noisy imitation while preserving the useful correction signal.
+sum_i g_i * c_i <= rho_t * sum_i c_i
 ```
 
-## Active Training Configuration
+where:
 
-The centralized entry point is:
-
-```bash
-bash experiments/math/run_sdpo_math_benchmark.sh
+```text
+g_i = 1 if target i is selected under the token budget, else 0.
 ```
 
-The active thesis run uses:
+This design prefers targets that are both reliable and efficient. It is
+especially useful for math reasoning, where responses can be long and SDPO
+teacher contexts can significantly increase actor-update cost.
 
-| Field | Value |
-|---|---|
+## 8. Sparse Execution Design
+
+The implementation separates target selection from distributed compute
+alignment.
+
+The target gate `g_i` determines which samples have nonzero SDPO loss. For
+rejected samples, the SDPO reliability weight is set to zero before actor loss
+computation.
+
+In distributed data-parallel training, some additional rows may be computed only
+to keep per-rank batch shapes aligned. These rows have zero SDPO weight and do
+not affect the objective. This preserves correctness while avoiding unnecessary
+distillation loss on low-reliability targets.
+
+The implementation logs both quantities:
+
+```text
+target_fraction  = fraction selected by g_i
+compute_fraction = fraction computed after distributed alignment
+```
+
+This distinction is important for reporting both methodological behavior and
+actual training cost.
+
+## 9. Comparison With Vanilla SDPO
+
+| Property | Vanilla SDPO | RG-SDPO |
+| --- | --- | --- |
+| Uses feedback reprompting | Yes | Yes |
+| Uses math-verifier metadata | Only for reward | For reward and SDPO target reliability |
+| Treats all SDPO targets equally | Yes | No |
+| Weights targets by reliability | No | Yes |
+| Filters low-confidence targets | No | Yes |
+| Uses adaptive gate schedule | No | Yes |
+| Uses token-budgeted target selection | No | Yes |
+| Reduces noisy imitation risk | Limited | Stronger |
+| Provides interpretable gate metrics | Limited | Yes |
+
+The main conceptual improvement is that RG-SDPO changes SDPO from
+availability-based imitation to reliability-aware imitation. Vanilla SDPO asks
+"is a reprompt target available?" RG-SDPO asks "is the target reliable enough to
+imitate, and is it worth the token cost?"
+
+## 10. Algorithm Summary
+
+For each training batch:
+
+```text
+1. Generate rollout responses y_i from pi_theta.
+2. Score each response with the math reward/verifier.
+3. Construct feedback and peer-solution metadata.
+4. Build an SDPO reprompt context c_i when a usable target exists.
+5. Assign reliability weight w_i from reward metadata.
+6. Compute scheduled threshold tau_t and budget rho_t.
+7. Mark eligible targets e_i = m_i * 1[w_i >= tau_t].
+8. Select gated targets g_i under the token budget.
+9. Apply RL loss to all samples.
+10. Apply SDPO loss only where m_i * g_i * w_i > 0.
+11. Update the EMA teacher.
+```
+
+This algorithm preserves the original RL learning signal while making the
+auxiliary SDPO signal more selective.
+
+## 11. Implementation Constants Used in the Thesis Runs
+
+| Component | Value |
+| --- | --- |
 | Dataset | `open-r1/DAPO-Math-17k-Processed`, English subset |
-| Prepared files | `data/dapo_math_en/train.parquet`, `data/dapo_math_en/val.parquet` |
-| Model | `Qwen/Qwen3-8B` |
-| Python | `3.12` |
-| Attention | SDPA |
-| Rollout backend | vLLM |
-| Rollout tensor parallel | `2` |
-| LoRA | rank `32`, alpha `32` |
-| Quantization | `null` |
-| Qwen3 thinking mode | disabled |
-| Validation sampling | greedy, `n=1`, `temperature=0.01` |
-| Train seed | `42` |
-| Variants | `base_rl sdpo_vanilla sdpo_reliability_gate` |
+| Training files | `data/dapo_math_en/train.parquet`, `data/dapo_math_en/val.parquet` |
+| Main model | `Qwen/Qwen3-8B` |
+| Optimization variants | `base_rl`, `sdpo_vanilla`, `sdpo_reliability_gate` |
+| LoRA rank / alpha | `32 / 32` |
+| Teacher regularization | EMA teacher |
+| EMA update rate | `0.01` |
+| Distillation divergence | generalized Jensen-Shannon |
+| `alpha` | `0.5` |
+| Distillation support | top-50 logits plus tail mass |
+| Importance-ratio clip | `2.0` |
+| Reliability threshold schedule | linear |
+| `tau_start`, `tau_end` | `0.2`, `0.4` |
+| `rho_start`, `rho_end` | `0.6`, `0.5` |
+| Gate budget mode | teacher-token budget |
+| Validation decoding | greedy, `n=1`, `temperature=0.01` |
+| Required answer format | `\boxed{...}` |
 
-### H200 Thesis Profile
+The active thesis H200 profile uses `train_batch_size=48`, `rollout.n=2`, and
+therefore `96` rollout responses per training step. The A100/H100 profile uses a
+smaller batch size for memory stability.
 
-Used when:
+## 12. Metrics and Qualitative Analysis
 
-```bash
-export PHASE=thesis
-export HARDWARE_PROFILE=h200
-```
+The method is evaluated using both outcome metrics and mechanism metrics.
 
-| Setting | Value |
-|---|---:|
-| Train steps | `10` |
-| Train max samples | `1536` |
-| Val max samples | `128` |
-| Train batch size | `48` |
-| Rollouts per prompt | `2` |
-| Effective rollouts per step | `96` |
-| Agent workers | `16` |
-| Response length | `2048` |
-| Rollout max model length | `6144` |
-| Actor max token length | `8192` |
-| SDPO reprompt length | `4096` |
-| Base rollout batched tokens | `196608` |
-| Base rollout max seqs | `96` |
-| Base rollout GPU utilization | `0.70` |
-| SDPO batched tokens | `131072` |
-| SDPO max seqs | `64` |
-| SDPO GPU utilization | `0.58` |
-| Activation offload for SDPO | `True` |
-| Distillation top-k | `50` |
-| Reliability gate threshold | `0.4` |
-| Reliability gate max fraction | `0.5` |
-| Reliability gate budget mode | `token` |
-| Reliability gate schedule | `linear` |
-| Reliability gate start threshold | `0.25` |
-| Reliability gate end threshold | `0.4` |
-| Reliability gate start max fraction | `0.6` |
-| Reliability gate end max fraction | `0.5` |
-
-Reasoning:
-
-- `Qwen3-8B` is strong enough for math while still trainable with 2 GPUs.
-- `train_batch_size=48` improves GPU utilization on H200 without making SDPO target tensors too large.
-- `val_max_samples=128` reduces validation cost while still giving a useful signal during constrained thesis runs.
-- `response_len=2048` keeps enough room for math reasoning, but the prompt asks for concise reasoning and boxed final answers.
-- Qwen3 thinking mode is disabled to reduce rambling and improve throughput.
-- SDPO rollout memory settings are lower than base RL settings because SDPO carries teacher inputs and distillation tensors.
-- `gpu_memory_utilization` is intentionally below maximum. Hybrid FSDP + vLLM needs free memory for model transitions, LoRA synchronization, teacher tensors, and CUDA workspace.
-
-### A100/H100 Thesis Profile
-
-Used when:
-
-```bash
-export PHASE=thesis
-export HARDWARE_PROFILE=a100
-```
-
-or:
-
-```bash
-export HARDWARE_PROFILE=h100
-```
-
-| Setting | Value |
-|---|---:|
-| Train steps | `10` |
-| Train max samples | `1024` |
-| Val max samples | `128` |
-| Train batch size | `32` |
-| Rollouts per prompt | `2` |
-| Effective rollouts per step | `64` |
-| Response length | `2048` |
-| Rollout max model length | `6144` |
-| Actor max token length | `8192` |
-| SDPO reprompt length | `3072` on A100, `4096` on H100 |
-
-Reasoning:
-
-- A100/H100 memory headroom is lower than H200 in the current 2-GPU setup.
-- Smaller batch size and lower SDPO memory settings reduce vLLM startup and LoRA wake-up OOM risk.
-- The shorter run is intended for a time-constrained thesis comparison, not a full-scale arXiv-grade training sweep.
-
-## Variant-Specific Overrides
-
-### `base_rl`
-
-```text
-policy_loss.loss_mode = vanilla
-include_environment_feedback = False
-reliability_weighting = False
-reliability_gate_threshold = 0.0
-```
-
-This is the RL baseline. It uses math reward only and does not use SDPO.
-
-### `sdpo_vanilla`
-
-```text
-policy_loss.loss_mode = sdpo
-include_environment_feedback = True
-sparse_target_execution = True
-reliability_weighting = False
-reliability_gate_threshold = 0.0
-reliability_gate_max_fraction = null
-reliability_gate_sparse_execution = False
-```
-
-This is the original SDPO-style math adaptation. It uses feedback-reprompted targets but does not judge target reliability.
-
-### `sdpo_reliability_gate`
-
-```text
-policy_loss.loss_mode = sdpo
-include_environment_feedback = True
-sparse_target_execution = True
-reliability_weighting = True
-reliability_gate_threshold = 0.4
-reliability_gate_max_fraction = 0.5
-reliability_gate_budget_mode = token
-reliability_gate_schedule = linear
-reliability_gate_start_threshold = 0.25
-reliability_gate_end_threshold = 0.4
-reliability_gate_start_max_fraction = 0.6
-reliability_gate_end_max_fraction = 0.5
-reliability_gate_sparse_execution = True
-```
-
-This is the proposed improvement. It uses the same feedback source as vanilla SDPO, but applies a reliability weight and an adaptive token-budgeted sparse reliability gate.
-
-## Metrics To Report
-
-Primary result metrics:
+Primary outcome metrics:
 
 | Metric | Meaning |
-|---|---|
-| `val_acc_mean` | Main validation accuracy. |
-| `incorrect_format_mean` | Fraction of validation outputs with bad answer format. |
-| `truncated_mean` | Fraction of outputs clipped by max response length. |
+| --- | --- |
+| `val_acc_mean` | Validation accuracy under math verification. |
+| `incorrect_format_mean` | Fraction of validation outputs with malformed final answer format. |
+| `truncated_mean` | Fraction of outputs clipped by the response-length limit. |
 | `response_length_mean` | Average generated response length. |
-| `response_length_clip_ratio` | How often responses hit the length cap. |
+| `response_length_clip_ratio` | Frequency of responses reaching the length cap. |
 
-Training and efficiency metrics:
-
-| Metric | Meaning |
-|---|---|
-| `throughput_tokens_per_s` | Overall training throughput. |
-| `time_per_step_s` | Wall time per optimization step. |
-| `gen_s` | Rollout generation time. |
-| `old_log_prob_s` | Old log-probability computation time. |
-| `update_actor_s` | Actor update time. |
-
-SDPO metrics:
+Gate and efficiency metrics:
 
 | Metric | Meaning |
-|---|---|
-| `sdpo_reprompt_fraction` | Fraction of samples with SDPO reprompt targets. |
-| `sdpo_feedback_used_fraction` | Fraction of samples where feedback was used. |
-| `sdpo_reliability_weight_mean` | Average reliability weight. |
-| `sdpo_reliability_gate_threshold` | Active scheduled threshold for the current step. |
-| `sdpo_reliability_gate_budget_mode_token` | `1.0` means token-budgeted gate, `0.0` means sample-budgeted gate. |
-| `sdpo_reliability_gate_schedule_progress` | Linear schedule progress from `0.0` to `1.0`. |
-| `sdpo_reliability_gate_max_fraction` | Active scheduled batch budget. |
-| `sdpo_reliability_gate_eligible_fraction` | Fraction passing the reliability threshold. |
-| `sdpo_reliability_gate_fraction` | Fraction actually selected as SDPO targets. |
-| `sdpo_reliability_gate_compute_fraction` | Fraction computed after DP alignment. |
-| `sdpo_reliability_gate_target_token_fraction` | Teacher-token fraction selected as SDPO targets before DP alignment. |
-| `sdpo_reliability_gate_compute_token_fraction` | Token fraction spent on gated SDPO compute. |
+| --- | --- |
+| `sdpo_reprompt_fraction` | Fraction of samples with an SDPO reprompt target. |
+| `sdpo_feedback_used_fraction` | Fraction of samples where feedback is used in the reprompt. |
+| `sdpo_reliability_weight_mean` | Average target reliability weight. |
+| `sdpo_reliability_gate_threshold` | Active threshold `tau_t`. |
+| `sdpo_reliability_gate_schedule_progress` | Schedule progress `p_t`. |
+| `sdpo_reliability_gate_max_fraction` | Active budget `rho_t`. |
+| `sdpo_reliability_gate_eligible_fraction` | Fraction satisfying `w_i >= tau_t`. |
+| `sdpo_reliability_gate_fraction` | Fraction selected as nonzero SDPO targets. |
+| `sdpo_reliability_gate_compute_fraction` | Fraction computed after distributed alignment. |
+| `sdpo_reliability_gate_target_token_fraction` | Teacher-token fraction selected by the gate. |
+| `sdpo_reliability_gate_compute_token_fraction` | Teacher-token fraction spent after alignment. |
+| `time_per_step_s` | Wall-clock time per optimization step. |
+| `throughput_tokens_per_s` | Overall token throughput. |
 
-## Expected Interpretation
+Qualitative SDPO trajectories are saved to:
 
-Good reliability-gate behavior looks like:
+```text
+logs/sdpo_math_phase/<run_tag>/trajectories/<variant>.jsonl
+```
 
-- `sdpo_reliability_gate_fraction` is below vanilla SDPO reprompt fraction.
-- `sdpo_reliability_gate_compute_token_fraction` is meaningfully below `1.0`.
-- Validation accuracy is competitive with or better than vanilla SDPO.
-- Incorrect-format and truncation rates do not increase.
-- Actor update time is lower than vanilla SDPO, or the method reaches similar validation accuracy with fewer reliable SDPO targets.
+Each trajectory record stores the original response, reward metadata, feedback,
+reprompt, teacher-forced target, reliability weight, gate decision, token budget
+usage, and the active SDPO/gate formulas. These records support qualitative
+analysis of why a target was selected or rejected.
 
-If reliability-gated SDPO is faster but slightly lower accuracy, report it as an efficiency-quality tradeoff. If it is both faster and more accurate than vanilla SDPO, that is the strongest thesis result.
+## 13. Expected Empirical Behavior
 
-## Code References
+RG-SDPO is expected to improve SDPO in two ways.
 
-- Runner: `experiments/math/run_sdpo_math_benchmark.sh`
-- Hardware/profile config: `experiments/math/phase_common.sh`
-- Manifest writer: `experiments/math/write_phase_manifest.py`
-- Reliability weights and gate scheduling: `verl/trainer/ppo/ray_trainer.py`
-- SDPO loss: `verl/trainer/ppo/core_algos.py`
-- Config defaults: `verl/trainer/config/sdpo_math_a100.yaml`
+First, it should reduce noisy imitation. Compared with vanilla SDPO, the gated
+method should use fewer low-confidence targets and concentrate the auxiliary
+loss on targets supported by verification or stronger feedback.
+
+Second, it should improve the efficiency-quality tradeoff. Since SDPO adds
+teacher-side computation, selecting fewer but more reliable targets can reduce
+actor-update cost while preserving useful correction signals.
+
+The strongest empirical outcome is:
+
+```text
+RG-SDPO >= vanilla SDPO in validation accuracy
+and RG-SDPO < vanilla SDPO in SDPO compute fraction or actor-update time.
+```
+
+If RG-SDPO obtains similar accuracy with lower compute, it should be reported as
+an efficiency improvement. If it obtains higher accuracy with similar or lower
+compute, it supports the stronger claim that reliability-aware target selection
+improves SDPO for math-domain policy optimization.
+
+## 14. Thesis Claim
+
+The proposed method can be summarized as follows:
+
+```text
+Reliability-Gated SDPO improves math-domain self-distillation by replacing
+availability-based imitation with reliability-aware, token-budgeted imitation.
+It uses verifier-derived metadata to weight and select SDPO targets, reducing
+noisy imitation while preserving the correction signal provided by feedback
+reprompting.
+```
+
+## 15. Code References
+
+| Component | Location |
+| --- | --- |
+| Phase runner | `experiments/math/run_sdpo_math_benchmark.sh` |
+| Hardware/profile settings | `experiments/math/phase_common.sh` |
+| Manifest writer | `experiments/math/write_phase_manifest.py` |
+| Reliability weights and gate scheduling | `verl/trainer/ppo/ray_trainer.py` |
+| SDPO/Jensen-Shannon loss | `verl/trainer/ppo/core_algos.py` |
+| Actor sparse SDPO execution | `verl/workers/actor/dp_actor.py` |
+| Config defaults | `verl/trainer/config/sdpo_math_a100.yaml` |

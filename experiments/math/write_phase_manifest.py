@@ -89,6 +89,13 @@ def main() -> None:
                 "ROLLOUT_QUANTIZATION",
             ]
         },
+        "trajectory_logging": {
+            "data_dir": os.environ.get("TRAJECTORY_LOG_DIR"),
+            "max_samples": os.environ.get("TRAJECTORY_LOG_SAMPLES", "16"),
+            "text_max_chars": os.environ.get("TRAJECTORY_LOG_TEXT_CHARS", "6000"),
+            "schema_version": 1,
+            "scope": "sdpo_variants_only",
+        },
         "config_name": args.config_name,
         "model": args.model,
         "variants": args.variants.split(),
@@ -109,7 +116,7 @@ def main() -> None:
                 "reliability_gate_max_fraction": os.environ.get("RELIABILITY_GATE_MAX_FRACTION", "0.5"),
                 "reliability_gate_budget_mode": os.environ.get("RELIABILITY_GATE_BUDGET_MODE", "token"),
                 "reliability_gate_schedule": os.environ.get("RELIABILITY_GATE_SCHEDULE", "linear"),
-                "reliability_gate_start_threshold": os.environ.get("RELIABILITY_GATE_START_THRESHOLD", "0.25"),
+                "reliability_gate_start_threshold": os.environ.get("RELIABILITY_GATE_START_THRESHOLD", "0.2"),
                 "reliability_gate_end_threshold": os.environ.get("RELIABILITY_GATE_END_THRESHOLD", "0.4"),
                 "reliability_gate_start_max_fraction": os.environ.get("RELIABILITY_GATE_START_MAX_FRACTION", "0.6"),
                 "reliability_gate_end_max_fraction": os.environ.get("RELIABILITY_GATE_END_MAX_FRACTION", "0.5"),

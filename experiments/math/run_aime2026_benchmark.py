@@ -242,6 +242,13 @@ def load_examples(path: Path, limit: int) -> list[dict[str, Any]]:
     return rows
 
 
+def load_data_metadata(path: Path) -> dict[str, Any]:
+    metadata_path = path.with_suffix(".metadata.json")
+    if not metadata_path.exists():
+        return {}
+    return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
 def batched(rows: list[dict[str, Any]], batch_size: int):
     for start in range(0, len(rows), batch_size):
         yield start, rows[start : start + batch_size]
@@ -429,9 +436,11 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     rows = load_examples(args.data_path, args.limit)
+    data_metadata = load_data_metadata(args.data_path)
     variants = discover_variants(args, manifest, exp_suffix)
     config = {
         "data_path": str(args.data_path),
+        "data_metadata": data_metadata,
         "model_path": model_path,
         "log_dir": str(resolved_log_dir) if resolved_log_dir is not None else None,
         "exp_suffix": exp_suffix,

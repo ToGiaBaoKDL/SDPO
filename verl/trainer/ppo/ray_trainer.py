@@ -556,6 +556,7 @@ class RayPPOTrainer:
 
         self.use_prefix_grouper = self.config.actor_rollout_ref.actor.get("use_prefix_grouper", False)
         self.use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
+        self._trajectory_log_count = self._count_existing_trajectory_logs()
 
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
 
@@ -912,6 +913,301 @@ class RayPPOTrainer:
             return default
         return values[idx]
 
+    def _trajectory_variant_name(self) -> str:
+        variant = self.config.trainer.get("trajectory_variant", None)
+        if not variant:
+            experiment_name = str(self.config.trainer.experiment_name)
+            for known_variant in (
+                "sdpo_reliability_gate",
+                "sdpo_reliability",
+                "sdpo_vanilla",
+                "base_rl",
+                "base_model",
+            ):
+                if experiment_name == known_variant or experiment_name.startswith(f"{known_variant}_"):
+                    variant = known_variant
+                    break
+            else:
+                variant = experiment_name
+        return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(variant)).strip("_") or "sdpo"
+
+    def _trajectory_log_path(self) -> Optional[str]:
+        data_dir = self.config.trainer.get("trajectory_data_dir", None)
+        max_samples = int(self.config.trainer.get("trajectory_log_max_samples", 0) or 0)
+        if not data_dir or max_samples <= 0:
+            return None
+        return os.path.join(str(data_dir), f"{self._trajectory_variant_name()}.jsonl")
+
+    def _count_existing_trajectory_logs(self) -> int:
+        path = self._trajectory_log_path()
+        if path is None or not os.path.exists(path):
+            return 0
+        with open(path, encoding="utf-8") as handle:
+            return sum(1 for _ in handle)
+
+    def _truncate_trajectory_text(self, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value)
+        max_chars = int(self.config.trainer.get("trajectory_log_text_max_chars", 6000) or 6000)
+        if max_chars > 0 and len(text) > max_chars:
+            return text[:max_chars] + "...<truncated>"
+        return text
+
+    @staticmethod
+    def _jsonable_trajectory_value(value: Any) -> Any:
+        if isinstance(value, (np.integer, np.floating)):
+            return value.item()
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, torch.Tensor):
+            if value.numel() == 1:
+                return value.detach().cpu().item()
+            return value.detach().cpu().tolist()
+        if isinstance(value, dict):
+            return {str(k): RayPPOTrainer._jsonable_trajectory_value(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [RayPPOTrainer._jsonable_trajectory_value(v) for v in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return str(value)
+
+    @staticmethod
+    def _ground_truth_from_reward_model(reward_model: Any) -> str:
+        if isinstance(reward_model, dict):
+            return str(reward_model.get("ground_truth", ""))
+        return ""
+
+    @staticmethod
+    def _trajectory_float(value: Any, default: float = 0.0) -> float:
+        if value is None:
+            return float(default)
+        if isinstance(value, torch.Tensor):
+            if value.numel() == 0:
+                return float(default)
+            value = value.detach().cpu().flatten()[0].item()
+        if isinstance(value, np.ndarray):
+            if value.size == 0:
+                return float(default)
+            value = value.reshape(-1)[0].item()
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    @staticmethod
+    def _trajectory_index_from_extra(extra_info: Any, fallback: int) -> str:
+        if isinstance(extra_info, dict):
+            return str(extra_info.get("index", fallback))
+        return str(fallback)
+
+    def _reliability_reason(
+        self,
+        *,
+        solution_str: Optional[str],
+        feedback_used: bool,
+        reward_extra_infos_dict: Optional[dict[str, list]],
+        idx: int,
+    ) -> str:
+        is_truncated = self._truthy_reward_extra(
+            self._reward_extra_at(reward_extra_infos_dict, "truncated", idx, False)
+        )
+        incorrect_format = self._truthy_reward_extra(
+            self._reward_extra_at(reward_extra_infos_dict, "incorrect_format", idx, False)
+        )
+        if is_truncated:
+            return "truncated"
+        if solution_str is not None:
+            return "peer_solution"
+        if feedback_used and incorrect_format:
+            return "format_feedback"
+        if feedback_used:
+            return "safe_feedback"
+        return "none"
+
+    @staticmethod
+    def _gate_decision_reason(
+        *,
+        distillation_active: bool,
+        reliability_weighting: bool,
+        threshold: float,
+        eligible: bool,
+        selected: bool,
+        computed: bool,
+        budget_mode: str,
+    ) -> str:
+        if not distillation_active:
+            return "no_sdpo_target"
+        if threshold <= 0 and not reliability_weighting:
+            return "vanilla_sdpo_target" if selected else "no_sdpo_target"
+        if threshold <= 0 and reliability_weighting:
+            return "reliability_weighted_target" if selected else "zero_reliability_weight"
+        if not eligible:
+            return "below_reliability_threshold"
+        if selected:
+            return f"selected_by_{budget_mode}_budget"
+        if computed:
+            return "dp_alignment_compute_only"
+        return f"rejected_by_{budget_mode}_budget"
+
+    def _log_self_distillation_trajectories(
+        self,
+        *,
+        actor_batch: DataProto,
+        target_mask: torch.Tensor,
+        compute_mask: torch.Tensor,
+        eligible_mask: torch.Tensor,
+        original_weight: Optional[torch.Tensor],
+        threshold: float,
+        max_fraction: Optional[float],
+        budget_mode: str,
+        gate_schedule_metrics: dict[str, float],
+        reliability_weighting: bool,
+    ) -> None:
+        path = self._trajectory_log_path()
+        max_samples = int(self.config.trainer.get("trajectory_log_max_samples", 0) or 0)
+        if path is None or self._trajectory_log_count >= max_samples:
+            return
+
+        base_records = actor_batch.non_tensor_batch.get("self_distillation_trajectory")
+        if base_records is None:
+            return
+
+        teacher_attention = actor_batch.batch["teacher_attention_mask"].float()
+        response_mask = actor_batch.batch["response_mask"].float()
+        total_teacher_tokens = float(teacher_attention.sum().clamp(min=1.0).item())
+        total_response_tokens = float(response_mask.sum().clamp(min=1.0).item())
+        selected_teacher_tokens = float((teacher_attention * target_mask.unsqueeze(1)).sum().item())
+        compute_teacher_tokens = float((teacher_attention * compute_mask.unsqueeze(1)).sum().item())
+        selected_response_tokens = float((response_mask * target_mask.unsqueeze(1)).sum().item())
+        compute_response_tokens = float((response_mask * compute_mask.unsqueeze(1)).sum().item())
+        token_budget = (
+            float(max_fraction) * total_teacher_tokens
+            if max_fraction is not None and budget_mode == "token" and threshold > 0
+            else None
+        )
+        self_distillation_cfg = self.config.actor_rollout_ref.actor.get("self_distillation", {})
+        full_logit_distillation = bool(self_distillation_cfg.get("full_logit_distillation", False))
+        distillation_alpha = float(self_distillation_cfg.get("alpha", 1.0) or 1.0)
+        distillation_topk = self_distillation_cfg.get("distillation_topk", None)
+        if full_logit_distillation:
+            active_loss_formula = (
+                "ell_it = D_GJS_alpha(pi_s(.|x_i,y_<t), "
+                "pi_T(.|reprompt_i,y_<t)) over top-k(+tail) logits"
+            )
+            active_loss_mode = "full_logit_generalized_jensen_shannon"
+        else:
+            active_loss_formula = (
+                "ell_it = stopgrad(log pi_s(y_it|x_i,y_<t) - "
+                "log pi_T(y_it|reprompt_i,y_<t)) * log pi_s(y_it|x_i,y_<t)"
+            )
+            active_loss_mode = "sampled_token_reverse_kl_surrogate"
+
+        target_mask_cpu = target_mask.detach().cpu()
+        compute_mask_cpu = compute_mask.detach().cpu()
+        eligible_mask_cpu = eligible_mask.detach().cpu()
+        distillation_mask_cpu = (actor_batch.batch["self_distillation_mask"] > 0).detach().cpu()
+        teacher_tokens_cpu = teacher_attention.sum(dim=1).detach().cpu()
+        response_tokens_cpu = response_mask.sum(dim=1).detach().cpu()
+        weight_cpu = original_weight.detach().cpu() if original_weight is not None else None
+
+        records: list[dict[str, Any]] = []
+        remaining = max_samples - self._trajectory_log_count
+        for idx, base_record in enumerate(base_records):
+            if remaining <= 0:
+                break
+            distillation_active = bool(distillation_mask_cpu[idx].item())
+            if not distillation_active:
+                continue
+
+            teacher_tokens = float(teacher_tokens_cpu[idx].item())
+            response_tokens = float(response_tokens_cpu[idx].item())
+            weight_value = float(weight_cpu[idx].item()) if weight_cpu is not None else None
+            selected = bool(target_mask_cpu[idx].item())
+            computed = bool(compute_mask_cpu[idx].item())
+            eligible = bool(eligible_mask_cpu[idx].item())
+            utility = (
+                weight_value / max(teacher_tokens, 1.0)
+                if weight_value is not None and budget_mode == "token" and threshold > 0
+                else None
+            )
+            sdpo_loss_weight = weight_value if weight_value is not None else 1.0
+            if not selected:
+                sdpo_loss_weight = 0.0
+
+            if isinstance(base_record, dict):
+                record = dict(base_record)
+            else:
+                record = {"raw_trajectory_record": self._jsonable_trajectory_value(base_record)}
+            record.update(
+                {
+                    "trajectory_schema_version": 1,
+                    "global_step": int(getattr(self, "global_steps", 0)),
+                    "variant": self._trajectory_variant_name(),
+                    "experiment_name": str(self.config.trainer.experiment_name),
+                    "sdpo_target_active": distillation_active,
+                    "sdpo_loss_mode": active_loss_mode,
+                    "sdpo_distillation_alpha": distillation_alpha,
+                    "sdpo_distillation_topk": distillation_topk,
+                    "sdpo_loss_weight_after_gate": sdpo_loss_weight,
+                    "reliability_weight": weight_value,
+                    "gate_threshold": float(threshold),
+                    "gate_schedule_progress": float(
+                        gate_schedule_metrics.get("self_distillation/reliability_gate_schedule_progress", 0.0)
+                    ),
+                    "gate_max_fraction": float(max_fraction) if max_fraction is not None else 1.0,
+                    "gate_budget_mode": budget_mode,
+                    "gate_eligible": eligible,
+                    "gate_selected": selected,
+                    "gate_computed": computed,
+                    "gate_selected_reason": self._gate_decision_reason(
+                        distillation_active=distillation_active,
+                        reliability_weighting=reliability_weighting,
+                        threshold=float(threshold),
+                        eligible=eligible,
+                        selected=selected,
+                        computed=computed,
+                        budget_mode=budget_mode,
+                    ),
+                    "teacher_tokens": teacher_tokens,
+                    "response_tokens": response_tokens,
+                    "student_target_tokens": response_tokens if selected else 0.0,
+                    "reliability_per_teacher_token": utility,
+                    "batch_teacher_tokens_total": total_teacher_tokens,
+                    "batch_response_tokens_total": total_response_tokens,
+                    "gate_token_budget": token_budget,
+                    "gate_target_teacher_tokens": selected_teacher_tokens,
+                    "gate_compute_teacher_tokens": compute_teacher_tokens,
+                    "gate_target_response_tokens": selected_response_tokens,
+                    "gate_compute_response_tokens": compute_response_tokens,
+                    "gate_target_teacher_token_fraction": selected_teacher_tokens / total_teacher_tokens,
+                    "gate_compute_teacher_token_fraction": compute_teacher_tokens / total_teacher_tokens,
+                    "gate_target_response_token_fraction": selected_response_tokens / total_response_tokens,
+                    "gate_compute_response_token_fraction": compute_response_tokens / total_response_tokens,
+                    "gate_formula": {
+                        "active_distillation_loss": active_loss_formula,
+                        "loss_mask": "mask_it = response_mask_it * g_i * w_i",
+                        "schedule_progress": "p_t = (t - 1) / max(T - 1, 1)",
+                        "threshold": "tau_t = tau_start + p_t * (tau_end - tau_start)",
+                        "budget": "rho_t = rho_start + p_t * (rho_end - rho_start)",
+                        "eligibility": "eligible_i = 1[w_i >= tau_t]",
+                        "token_utility": "u_i = w_i / max(c_i, 1)",
+                        "token_budget": "sum_i g_i * c_i <= rho_t * sum_i c_i",
+                    },
+                }
+            )
+            records.append(self._jsonable_trajectory_value(record))
+            remaining -= 1
+
+        if not records:
+            return
+
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        self._trajectory_log_count += len(records)
+
     def _prepare_sparse_self_distillation_actor_batch(
         self, batch: DataProto
     ) -> tuple[DataProto, dict[str, float]]:
@@ -934,10 +1230,12 @@ class RayPPOTrainer:
         reliability_weighting = bool(self_distillation_cfg.get("reliability_weighting", False))
         weight = batch.batch.get("self_distillation_weight")
         budget_mode = str(self_distillation_cfg.get("reliability_gate_budget_mode", "sample") or "sample").lower()
+        gate_eligible_mask = distillation_mask
         if threshold > 0:
             if weight is None:
                 raise ValueError("reliability-gated SDPO requires reliability weights")
             eligible_mask = (weight >= threshold) & distillation_mask
+            gate_eligible_mask = eligible_mask
             if budget_mode == "sample":
                 target_mask = apply_reliability_gate_budget(eligible_mask, weight, max_fraction)
             elif budget_mode == "token":
@@ -957,6 +1255,7 @@ class RayPPOTrainer:
             if weight is None:
                 raise ValueError("reliability-weighted SDPO requires reliability weights")
             target_mask = (weight > 0) & distillation_mask
+            gate_eligible_mask = target_mask
             sparse_execution = bool(self_distillation_cfg.get("sparse_target_execution", True))
         else:
             target_mask = distillation_mask
@@ -977,6 +1276,7 @@ class RayPPOTrainer:
             permutation, compute_mask, selected_per_rank = build_reliability_gate_schedule(target_mask, dp_size)
             actor_batch = batch[permutation]
             target_mask = target_mask[permutation]
+            gate_eligible_mask = gate_eligible_mask[permutation]
         else:
             actor_batch = batch
             compute_mask = torch.ones_like(target_mask, dtype=torch.bool)
@@ -985,8 +1285,14 @@ class RayPPOTrainer:
         batch_device = actor_batch.batch["self_distillation_mask"].device
         compute_mask = compute_mask.to(device=batch_device)
         target_mask = target_mask.to(device=batch_device)
+        gate_eligible_mask = gate_eligible_mask.to(device=batch_device)
         if torch.any(target_mask & ~compute_mask):
             raise RuntimeError("reliability gate schedule dropped a selected target")
+        original_weight_for_logging = (
+            actor_batch.batch["self_distillation_weight"].detach().clone()
+            if "self_distillation_weight" in actor_batch.batch
+            else None
+        )
         if threshold > 0:
             actor_batch.batch["self_distillation_weight"] = torch.where(
                 target_mask,
@@ -1053,6 +1359,19 @@ class RayPPOTrainer:
                     ],
                 }
             )
+        self._log_self_distillation_trajectories(
+            actor_batch=actor_batch,
+            target_mask=target_mask,
+            compute_mask=compute_mask,
+            eligible_mask=gate_eligible_mask,
+            original_weight=original_weight_for_logging,
+            threshold=float(threshold),
+            max_fraction=max_fraction,
+            budget_mode=budget_mode,
+            gate_schedule_metrics=gate_schedule_metrics,
+            reliability_weighting=reliability_weighting,
+        )
+        actor_batch.non_tensor_batch.pop("self_distillation_trajectory", None)
         return actor_batch, metrics
 
     def _compute_self_distillation_weights(
@@ -1265,6 +1584,7 @@ class RayPPOTrainer:
             "self_distillation/feedback_used_fraction": num_with_feedback_used / batch_size,
             "self_distillation/reprompt_sample_fraction": self_distillation_mask.float().mean().item(),
         }
+        reliability_weight = None
         if self_distillation_cfg.get("reliability_weighting", False):
             reliability_weight, reliability_metrics = self._compute_self_distillation_weights(
                 self_distillation_cfg=self_distillation_cfg,
@@ -1276,7 +1596,85 @@ class RayPPOTrainer:
             tensors["self_distillation_weight"] = reliability_weight
             metrics.update(reliability_metrics)
 
-        return DataProto.from_dict(tensors=tensors), metrics
+        seq_rewards = reward_tensor.detach()
+        if seq_rewards.ndim > 1:
+            seq_rewards = seq_rewards.sum(dim=-1)
+        seq_rewards = seq_rewards.detach().cpu().tolist()
+        reward_models = batch.non_tensor_batch.get("reward_model", [{}] * batch_size)
+        extra_infos = batch.non_tensor_batch.get("extra_info", [{}] * batch_size)
+        data_sources = batch.non_tensor_batch.get("data_source", [""] * batch_size)
+        trajectory_records: list[dict[str, Any]] = []
+        for i in range(batch_size):
+            extra_info = extra_infos[i] if i < len(extra_infos) else {}
+            reward_model = reward_models[i] if i < len(reward_models) else {}
+            original_reward = float(seq_rewards[i]) if i < len(seq_rewards) else 0.0
+            original_acc = self._reward_extra_at(reward_extra_infos_dict, "acc", i, original_reward)
+            original_score = self._reward_extra_at(reward_extra_infos_dict, "score", i, original_reward)
+            original_pred = self._reward_extra_at(reward_extra_infos_dict, "pred", i, None)
+            original_bad_format = self._truthy_reward_extra(
+                self._reward_extra_at(reward_extra_infos_dict, "incorrect_format", i, False)
+            )
+            original_truncated = self._truthy_reward_extra(
+                self._reward_extra_at(reward_extra_infos_dict, "truncated", i, False)
+            )
+            teacher_prompt_tokens = float(teacher_prompt["attention_mask"][i].sum().item())
+            response_tokens = float(response_mask[i].sum().item())
+            teacher_tokens = float(teacher_attention_mask[i].sum().item())
+            reliability_weight_value = (
+                float(reliability_weight[i].detach().cpu().item()) if reliability_weight is not None else None
+            )
+            reliability_reason = (
+                self._reliability_reason(
+                    solution_str=solution_strs[i],
+                    feedback_used=feedback_used[i],
+                    reward_extra_infos_dict=reward_extra_infos_dict,
+                    idx=i,
+                )
+                if reliability_weight is not None
+                else "not_weighted"
+            )
+            trajectory_records.append(
+                {
+                    "prompt_id": self._trajectory_index_from_extra(extra_info, i),
+                    "uid": str(batch.non_tensor_batch["uid"][i]),
+                    "data_source": str(data_sources[i]) if i < len(data_sources) else "",
+                    "ground_truth": self._ground_truth_from_reward_model(reward_model),
+                    "prompt": self._truncate_trajectory_text(prompt_texts[i]),
+                    "original_response": self._truncate_trajectory_text(response_texts[i]),
+                    "original_pred": None if original_pred is None else str(original_pred),
+                    "original_reward": original_reward,
+                    "original_acc": self._trajectory_float(original_acc, original_reward),
+                    "original_score": self._trajectory_float(original_score, original_reward),
+                    "original_bad_format": original_bad_format,
+                    "original_truncated": original_truncated,
+                    "feedback_available": feedback_list[i] is not None,
+                    "feedback_used": feedback_used[i],
+                    "feedback_text": self._truncate_trajectory_text(feedback_list[i]),
+                    "feedback_mode": str(self._reward_extra_at(reward_extra_infos_dict, "feedback_mode", i, "")),
+                    "successful_previous_attempt": self._truncate_trajectory_text(solution_strs[i]),
+                    "reprompt_prompt": self._truncate_trajectory_text(messages[i][-1]["content"]),
+                    "teacher_context_prompt": self._truncate_trajectory_text(messages[i][-1]["content"]),
+                    "teacher_response_generated": False,
+                    "sdpo_target_response": self._truncate_trajectory_text(response_texts[i]),
+                    "sdpo_target_reward_if_available": original_reward,
+                    "teacher_prompt_tokens": teacher_prompt_tokens,
+                    "teacher_tokens": teacher_tokens,
+                    "response_tokens_before_gate": response_tokens,
+                    "reliability_reason": reliability_reason,
+                    "reliability_weight_before_gate": reliability_weight_value,
+                    "sdpo_loss_weight_before_gate": (
+                        reliability_weight_value
+                        if reliability_weight_value is not None
+                        else float(self_distillation_mask[i].detach().cpu().item())
+                    ),
+                    "sdpo_target_available_before_gate": bool(self_distillation_mask[i].detach().cpu().item()),
+                }
+            )
+
+        non_tensors = {
+            "self_distillation_trajectory": np.array(trajectory_records, dtype=object),
+        }
+        return DataProto.from_dict(tensors=tensors, non_tensors=non_tensors), metrics
 
     def _get_gen_batch(self, batch: DataProto) -> DataProto:
         reward_model_keys = set({"data_source", "reward_model", "extra_info", "uid", "raw_prompt"}) & batch.non_tensor_batch.keys()

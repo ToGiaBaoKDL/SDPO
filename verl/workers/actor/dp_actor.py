@@ -899,7 +899,7 @@ class DataParallelPPOActor(BasePPOActor):
                         if reliability_gate_threshold > 0:
                             sparse_metrics.update(
                                 {
-                                    "self_distillation/reliability_gate_threshold_actor": reliability_gate_threshold,
+                                    "self_distillation/reliability_gate_active_actor": 1.0,
                                     "self_distillation/reliability_gate_target_fraction_actor": sparse_metrics[
                                         "self_distillation/sparse_target_fraction_actor"
                                     ],

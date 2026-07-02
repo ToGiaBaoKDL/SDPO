@@ -9,7 +9,6 @@ SDPO_PYTHON_VERSION="${SDPO_PYTHON_VERSION:-3.12}"
 ALLOW_UNTESTED_PYTHON="${ALLOW_UNTESTED_PYTHON:-0}"
 INSTALL_MATH_VERIFY="${INSTALL_MATH_VERIFY:-1}"
 PREPARE_DATA="${PREPARE_DATA:-1}"
-RUN_CPU_CHECK="${RUN_CPU_CHECK:-0}"
 VERIFY_HF_MODELS="${VERIFY_HF_MODELS:-0}"
 STABLE_TRANSFORMERS_SPEC="${STABLE_TRANSFORMERS_SPEC:-transformers==4.57.1}"
 NUMPY_SPEC="${NUMPY_SPEC:-numpy==2.1.0}"
@@ -70,7 +69,6 @@ echo "repo=${PROJECT_ROOT}"
 echo "sdpo_python_version=${SDPO_PYTHON_VERSION}"
 echo "install_math_verify=${INSTALL_MATH_VERIFY}"
 echo "prepare_data=${PREPARE_DATA}"
-echo "run_cpu_check=${RUN_CPU_CHECK}"
 echo "verify_hf_models=${VERIFY_HF_MODELS}"
 echo "stable_transformers_spec=${STABLE_TRANSFORMERS_SPEC}"
 echo "numpy_spec=${NUMPY_SPEC}"
@@ -222,11 +220,5 @@ if [[ "${PREPARE_DATA}" == "1" ]]; then
     --update_prepared_dir data/dapo_math_en
 fi
 finish_stage data
-
-if [[ "${RUN_CPU_CHECK}" == "1" ]]; then
-  start_stage cpu_check
-  PYTHON=.venv/bin/python bash experiments/math/test_cpu_pipeline.sh
-  finish_stage cpu_check
-fi
 
 echo "setup_ok elapsed_s=$((SECONDS - SETUP_STARTED_AT))"

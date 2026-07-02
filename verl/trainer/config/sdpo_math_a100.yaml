@@ -159,4 +159,8 @@ trainer:
   total_training_steps: null
   max_actor_ckpt_to_keep: 2
   default_local_dir: ${oc.env:PROJECT_ROOT}/checkpoints/sdpo_math/${trainer.experiment_name}
+  trajectory_data_dir: null
+  trajectory_variant: null
+  trajectory_log_max_samples: 16
+  trajectory_log_text_max_chars: 6000
   use_legacy_worker_impl: auto

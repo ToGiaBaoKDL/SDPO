@@ -39,6 +39,10 @@ COMMON_SNIPPETS = {
         "critic.model.path={model}",
         "trainer.total_training_steps={train_steps}",
         "trainer.validation_data_dir=",
+        "trainer.trajectory_data_dir=",
+        "trainer.trajectory_variant=sdpo_vanilla",
+        "trainer.trajectory_log_max_samples=",
+        "trainer.trajectory_log_text_max_chars=",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=True",
         "actor_rollout_ref.actor.self_distillation.sparse_target_execution=True",
@@ -55,6 +59,10 @@ COMMON_SNIPPETS = {
         "critic.model.path={model}",
         "trainer.total_training_steps={train_steps}",
         "trainer.validation_data_dir=",
+        "trainer.trajectory_data_dir=",
+        "trainer.trajectory_variant=sdpo_reliability",
+        "trainer.trajectory_log_max_samples=",
+        "trainer.trajectory_log_text_max_chars=",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=True",
         "actor_rollout_ref.actor.self_distillation.sparse_target_execution=True",
@@ -71,6 +79,10 @@ COMMON_SNIPPETS = {
         "critic.model.path={model}",
         "trainer.total_training_steps={train_steps}",
         "trainer.validation_data_dir=",
+        "trainer.trajectory_data_dir=",
+        "trainer.trajectory_variant=sdpo_reliability_gate",
+        "trainer.trajectory_log_max_samples=",
+        "trainer.trajectory_log_text_max_chars=",
         "actor_rollout_ref.actor.policy_loss.loss_mode=sdpo",
         "actor_rollout_ref.actor.self_distillation.include_environment_feedback=True",
         "actor_rollout_ref.actor.self_distillation.sparse_target_execution=True",
@@ -252,9 +264,9 @@ def manifest_gate_schedule(manifest: dict | None) -> str:
 
 def manifest_gate_start_threshold(manifest: dict | None) -> str:
     if manifest is None:
-        return "0.25"
+        return "0.2"
     gate_cfg = manifest.get("variant_hyperparameters", {}).get("sdpo_reliability_gate", {})
-    return str(gate_cfg.get("reliability_gate_start_threshold", "0.25"))
+    return str(gate_cfg.get("reliability_gate_start_threshold", "0.2"))
 
 
 def manifest_gate_end_threshold(manifest: dict | None) -> str:

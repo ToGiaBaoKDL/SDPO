@@ -132,6 +132,21 @@ def load_console_log(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def merge_metric_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return the final step with the latest observed value for each metric key."""
+    if not rows:
+        raise ValueError("cannot merge empty metric rows")
+    merged_data: dict[str, Any] = {}
+    final_step: Any = ""
+    for row in rows:
+        if "step" in row:
+            final_step = row["step"]
+        data = row.get("data", {})
+        if data:
+            merged_data.update(data)
+    return {"step": final_step, "data": merged_data}
+
+
 def pick(data: dict[str, Any], contains: list[str], prefer_prefix: str | None = None) -> Any:
     candidates = [
         (key, value)
@@ -153,7 +168,7 @@ def summarize_metric_file(path: Path) -> dict[str, Any]:
     if not rows:
         raise ValueError(f"empty metrics file: {path}")
 
-    final = rows[-1]
+    final = merge_metric_rows(rows)
     data = final.get("data", {})
     return {
         "variant": infer_variant(path),
@@ -210,7 +225,7 @@ def summarize_console_log(path: Path) -> dict[str, Any]:
     if not rows:
         raise ValueError(f"no console metric rows found: {path}")
 
-    final = rows[-1]
+    final = merge_metric_rows(rows)
     data = final.get("data", {})
     return {
         "variant": infer_variant(path),
@@ -280,7 +295,11 @@ def write_markdown(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def main() -> None:
     args = parse_args()
-    metric_files = sorted(glob.glob(str(args.log_dir / "metrics" / "SDPO-Math" / "*.jsonl")))
+    metric_files = [
+        path
+        for path in sorted(glob.glob(str(args.log_dir / "metrics" / "SDPO-Math" / "*.jsonl")))
+        if not Path(path).name.endswith(".progress.jsonl")
+    ]
     if metric_files:
         rows = [summarize_metric_file(Path(path)) for path in metric_files]
     else:

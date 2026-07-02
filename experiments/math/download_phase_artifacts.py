@@ -141,7 +141,7 @@ def main() -> None:
             metadata_path,
         ]:
             add_path(archive, path, archive_root)
-        for subdir in ["metrics", "validation", *BENCHMARK_DIR_NAMES]:
+        for subdir in ["metrics", "validation", "trajectories", *BENCHMARK_DIR_NAMES]:
             add_path(archive, log_dir / subdir, archive_root)
         for path in sorted(log_dir.glob("*.log")):
             add_path(archive, path, archive_root)
