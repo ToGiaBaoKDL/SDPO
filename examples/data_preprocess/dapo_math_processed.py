@@ -36,11 +36,10 @@ import pyarrow.parquet as pq
 DEFAULT_DATASET_NAME = "open-r1/DAPO-Math-17k-Processed"
 DEFAULT_SUBSET = "en"
 DEFAULT_PROMPT_SUFFIX = (
-    "Give a concise solution with only the necessary reasoning; do not restate the problem or repeat "
-    "calculations. End with exactly one final answer in \\boxed{}."
+    "Solve the problem carefully. Keep the reasoning concise. End with exactly one final answer in \\boxed{}."
 )
 DEFAULT_DATA_SOURCE = "math_dapo"
-PROMPT_STYLE = "concise_v1"
+PROMPT_STYLE = "concise_v2"
 DEFAULT_EVAL_DATASETS = ("MathArena/aime_2025", "MathArena/paper_benchmark")
 EVAL_PROBLEM_FIELDS = ("problem", "prompt", "question", "description")
 

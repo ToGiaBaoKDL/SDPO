@@ -14,8 +14,7 @@ import pyarrow.parquet as pq
 
 DEFAULT_OUTPUT_PATH = Path("data/aime2026/test.parquet")
 DEFAULT_PROMPT_SUFFIX = (
-    "Give a concise solution with only the necessary reasoning; do not restate the problem or repeat "
-    "calculations. End with exactly one final answer in \\boxed{}."
+    "Solve the problem carefully. Keep the reasoning concise. End with exactly one final answer in \\boxed{}."
 )
 PROBLEM_FIELDS = ("problem", "prompt", "question", "description", "statement")
 ANSWER_FIELDS = ("answer", "ground_truth", "final_answer", "solution")

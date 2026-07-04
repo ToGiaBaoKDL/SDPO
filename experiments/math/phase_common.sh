@@ -19,7 +19,7 @@ sdpo_math_configure_profile() {
   case "${hardware}:${profile}" in
     a100:fast)
       TRAIN_BS=32
-      ROLLOUT_N=2
+      ROLLOUT_N=4
       AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=1024
       MODEL_LEN=3072
@@ -37,7 +37,7 @@ sdpo_math_configure_profile() {
       ;;
     a100:balanced)
       TRAIN_BS=32
-      ROLLOUT_N=2
+      ROLLOUT_N=4
       AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=1536
       MODEL_LEN=4096
@@ -55,7 +55,7 @@ sdpo_math_configure_profile() {
       ;;
     a100:quality)
       TRAIN_BS=32
-      ROLLOUT_N=2
+      ROLLOUT_N=4
       AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=2048
       MODEL_LEN=6144
@@ -73,7 +73,7 @@ sdpo_math_configure_profile() {
       ;;
     h100:fast)
       TRAIN_BS=32
-      ROLLOUT_N=2
+      ROLLOUT_N=4
       AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=1024
       MODEL_LEN=3072
@@ -91,7 +91,7 @@ sdpo_math_configure_profile() {
       ;;
     h100:balanced)
       TRAIN_BS=32
-      ROLLOUT_N=2
+      ROLLOUT_N=4
       AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=1536
       MODEL_LEN=4096
@@ -109,7 +109,7 @@ sdpo_math_configure_profile() {
       ;;
     h100:quality)
       TRAIN_BS=32
-      ROLLOUT_N=2
+      ROLLOUT_N=4
       AGENT_WORKERS="${AGENT_WORKERS:-8}"
       RESPONSE_LEN=2048
       MODEL_LEN=6144
@@ -127,7 +127,7 @@ sdpo_math_configure_profile() {
       ;;
     h200:fast)
       TRAIN_BS=64
-      ROLLOUT_N=2
+      ROLLOUT_N=4
       AGENT_WORKERS="${AGENT_WORKERS:-16}"
       RESPONSE_LEN=1024
       MODEL_LEN=3072
@@ -145,7 +145,7 @@ sdpo_math_configure_profile() {
       ;;
     h200:balanced)
       TRAIN_BS=64
-      ROLLOUT_N=2
+      ROLLOUT_N=4
       AGENT_WORKERS="${AGENT_WORKERS:-16}"
       RESPONSE_LEN=1536
       MODEL_LEN=4096
@@ -163,7 +163,7 @@ sdpo_math_configure_profile() {
       ;;
     h200:quality)
       TRAIN_BS=48
-      ROLLOUT_N=2
+      ROLLOUT_N=4
       AGENT_WORKERS="${AGENT_WORKERS:-16}"
       RESPONSE_LEN=2048
       MODEL_LEN=6144
@@ -186,6 +186,7 @@ sdpo_math_configure_profile() {
   esac
 
   ROLLOUT_TP="${ROLLOUT_TP:-2}"
+  ROLLOUT_TEMPERATURE="${ROLLOUT_TEMPERATURE:-0.8}"
   SDPO_ACTIVATION_OFFLOAD="${SDPO_ACTIVATION_OFFLOAD:-True}"
   SDPO_DISTILLATION_TOPK="${SDPO_DISTILLATION_TOPK:-50}"
   RELIABILITY_GATE_MAX_FRACTION="${RELIABILITY_GATE_MAX_FRACTION:-0.5}"
@@ -193,7 +194,7 @@ sdpo_math_configure_profile() {
   export TRAIN_BS ROLLOUT_N AGENT_WORKERS RESPONSE_LEN MODEL_LEN ACTOR_LEN REPROMPT_LEN
   export BATCHED_TOKENS MAX_NUM_SEQS GPU_UTIL SDPO_BATCHED_TOKENS SDPO_MAX_NUM_SEQS SDPO_GPU_UTIL
   export SDPO_ACTOR_LEN SDPO_REPROMPT_LEN SDPO_ACTIVATION_OFFLOAD SDPO_DISTILLATION_TOPK
-  export ENFORCE_EAGER ROLLOUT_TP RELIABILITY_GATE_MAX_FRACTION
+  export ENFORCE_EAGER ROLLOUT_TP ROLLOUT_TEMPERATURE RELIABILITY_GATE_MAX_FRACTION
 }
 
 sdpo_math_validate_profile() {
@@ -253,6 +254,7 @@ sdpo_math_build_common_overrides() {
     actor_rollout_ref.actor.response_only_logits=True
     actor_rollout_ref.actor.data_loader_seed="${SEED:-42}"
     actor_rollout_ref.rollout.n="${ROLLOUT_N}"
+    actor_rollout_ref.rollout.temperature="${ROLLOUT_TEMPERATURE}"
     actor_rollout_ref.rollout.tensor_model_parallel_size="${ROLLOUT_TP}"
     actor_rollout_ref.rollout.agent.num_workers="${AGENT_WORKERS}"
     actor_rollout_ref.rollout.max_model_len="${MODEL_LEN}"

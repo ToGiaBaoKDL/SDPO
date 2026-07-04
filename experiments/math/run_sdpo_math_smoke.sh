@@ -66,7 +66,7 @@ python3 -m verl.trainer.main_ppo \
   actor_max_token_len=3072 \
   actor_rollout_ref.actor.ppo_mini_batch_size=2 \
   actor_rollout_ref.actor.ppo_max_token_len_per_gpu=3072 \
-  actor_rollout_ref.rollout.n=2 \
+  actor_rollout_ref.rollout.n=4 \
   actor_rollout_ref.rollout.max_model_len=3072 \
   actor_rollout_ref.rollout.max_num_batched_tokens=3072 \
   actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=3072 \

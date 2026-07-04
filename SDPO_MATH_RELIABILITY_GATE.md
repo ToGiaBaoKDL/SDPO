@@ -336,8 +336,8 @@ auxiliary SDPO signal more selective.
 | Validation decoding | greedy, `n=1`, `temperature=0.01` |
 | Required answer format | `\boxed{...}` |
 
-The active thesis H200 profile uses `train_batch_size=48`, `rollout.n=2`, and
-therefore `96` rollout responses per training step. The A100/H100 profile uses a
+The active thesis H200 profile uses `train_batch_size=48`, `rollout.n=4`, and
+therefore `192` rollout responses per training step. The A100/H100 profile uses a
 smaller batch size for memory stability.
 
 ## 12. Metrics and Qualitative Analysis
