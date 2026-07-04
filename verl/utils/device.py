@@ -65,9 +65,9 @@ def get_device_name() -> str:
     Returns:
         str: Device type string ('cuda', 'npu', or 'cpu').
     """
-    if is_cuda_available:
+    if torch.cuda.is_available():
         device = "cuda"
-    elif is_npu_available:
+    elif is_torch_npu_available():
         device = "npu"
     else:
         device = "cpu"
@@ -110,11 +110,18 @@ def get_nccl_backend() -> str:
     Returns:
         str: Backend name ('hccl' for NPU, 'nccl' for CUDA/default).
     """
-    if is_npu_available:
+    if is_torch_npu_available():
         return "hccl"
-    else:
-        # default to nccl
-        return "nccl"
+    # default to nccl for CUDA
+    return "nccl"
+
+
+def get_torch_distributed_backend() -> str:
+    """Return a valid backend string for torch distributed initialization."""
+    device_name = get_device_name()
+    if device_name == "cpu":
+        return "gloo"
+    return f"cpu:gloo,{device_name}:{get_nccl_backend()}"
 
 
 def set_expandable_segments(enable: bool) -> None:
